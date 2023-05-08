@@ -34,7 +34,8 @@ MapReduce-Implementation/
 │   ├── __init__.py
 │   ├── unit_tests/
 │   │   ├── __init__.py
-│   │   ├── ...
+│   │   ├── test_worker.py
+│       ├── ...
 │   └── integration_tests/
 │       ├── __init__.py
 │       ├── ...
