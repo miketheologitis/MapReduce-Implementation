@@ -1,5 +1,5 @@
 # Initial Idea (will definitely change)
-
+```markdown
 MapReduce-Implementation/
 ├── user_interface/
 |   ├── __init__.py
@@ -31,7 +31,7 @@ MapReduce-Implementation/
 |   ├── __init__.py
 |   └── zookeeper_client.py
 └── main.py
-
+```
 
 user_interface package: Contains the User Interface Service implementation, with sub-modules for jobs and admin command implementations.
 
