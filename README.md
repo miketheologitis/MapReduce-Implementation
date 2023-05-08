@@ -1,3 +1,9 @@
+# Usage
+
+```bash
+~/MapReduce-Implementation$ python -m unittest tests.unit_tests.test_worker
+```
+
 # Initial Idea (will definitely change)
 ```markdown
 MapReduce-Implementation/
