@@ -2,6 +2,7 @@
 ```markdown
 MapReduce-Implementation/
 ├── src/
+│   ├── __init__.py
 │   ├── user_interface/
 │   │   ├── __init__.py
 │   │   ├── client.py
@@ -30,6 +31,7 @@ MapReduce-Implementation/
 │       ├── __init__.py
 │       └── zookeeper_client.py
 ├── tests/
+│   ├── __init__.py
 │   ├── unit_tests/
 │   │   ├── __init__.py
 │   │   ├── ...
