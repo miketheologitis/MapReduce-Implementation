@@ -1,11 +1,10 @@
 import unittest
-from src.workers.worker import app, save_results_as_json, MAP_DIR
 import os
-import json
 import dill
 import unittest
-import tempfile
 import base64
+import pickle
+from src.workers.worker import app, save_results_as_pickle, MAP_DIR
 
 
 class TestWorker(unittest.TestCase):
@@ -36,7 +35,24 @@ class TestWorker(unittest.TestCase):
             'data': input_data
         })
 
-        print(response)
+        # Check response status code
+        self.assertEqual(response.status_code, 200)
+
+        # Check if the output file was created
+        output_file_path = response.get_data(as_text=True)
+        self.assertTrue(os.path.exists(output_file_path))
+
+        # Check if the content of the output file matches the expected result
+        expected_output = [
+            ("key1", 2),
+            ("key2", 4),
+            ("key3", 6)
+        ]
+
+        with open(output_file_path, 'rb') as f:
+            output_data = pickle.load(f)
+
+        self.assertEqual(output_data, expected_output)
 
     def tearDown(self):
         # Clean up the temporary JSON files created during the tests
