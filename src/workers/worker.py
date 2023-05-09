@@ -3,6 +3,13 @@ import os
 import pickle
 import dill
 import base64
+from flask import send_file
+import io
+import requests
+from operator import itemgetter
+from itertools import groupby, chain
+from functools import reduce
+
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MAP_DIR = os.path.join(BASE_DIR, "data/map_results")
@@ -13,7 +20,7 @@ app = Flask(__name__)
 
 def save_results_as_pickle(directory, data):
     """
-    Save the results as a pickle file in the specified directory.
+    Save the data as a pickle file in the specified directory.
 
     :param directory: The directory where the pickle file will be saved.
     :param data: The data to be saved in the pickle file.
@@ -36,6 +43,48 @@ def save_results_as_pickle(directory, data):
     return file_path
 
 
+def deserialize_func(encoded_func):
+    """
+    Deserialize a base64-encoded function.
+
+    :param encoded_func: A base64-encoded representation of a Python function.
+    :returns: The deserialized Python function.
+    """
+    # Convert from Base64-encoded string back to binary
+    serialized_func = base64.b64decode(encoded_func.encode('utf-8'))
+
+    # Deserialize the binary data to get the function back
+    func = dill.loads(serialized_func)
+
+    return func
+
+
+def fetch_data_from_workers(locations):
+    """
+    Fetches intermediate data from the specified workers.
+
+    :param: locations: A list of ('IP:PORT', file_path) tuples representing the
+            addresses of the workers and the file paths of the intermediate data.
+
+    :returns: The fetched data as a single list of key-value pairs.
+    """
+    data = []
+    for worker_address, file_path in locations:
+        response = requests.get(f'http://{worker_address}/fetch-data', params={'file_path': file_path})
+
+        # Use a BytesIO object as a "file-like" object to load the pickle data
+        tmp_data = pickle.loads(io.BytesIO(response.content).read())
+        data.extend(tmp_data)
+
+    return data
+
+
+@app.route('/fetch-data', methods=['GET'])
+def fetch_data():
+    file_path = request.args.get('file_path')
+    return send_file(file_path, as_attachment=True)
+
+
 # Define the routes and handlers for the worker
 @app.route('/map', methods=['POST'])
 def map_task():
@@ -44,28 +93,32 @@ def map_task():
     processes the input data using the map function, and saves the output
     data as a pickle file.
 
+    POST request data should be in the following JSON format:
+    {
+        "map_func": "<serialized_map_func>",
+        "data": [
+            ("key1", "value1"),
+            ("key2", "value2"),
+            ...
+        ]
+    }
+
+    `map_func`: Serialized map function. str (base64 encoded serialized function)
+
+    `data`: Input data on which map function is to be applied.
+
     :return: The file path of the saved pickle file.
     """
     data = request.get_json()
 
-    # Extract the encoded map function from the request data
-    encoded_map_func = data['map_func']
-
-    # Decode the encoded map function from base64 to bytes
-    serialized_map_func = base64.b64decode(encoded_map_func)
-
-    # Deserialize the map function using `dill`
-    map_func = dill.loads(serialized_map_func)
+    # Deserialize the reduce function
+    map_func = deserialize_func(data['map_func'])
 
     # Extract the input data from the POST request data
     input_data = data['data']
 
-    # Process the input data using the mapper function
-    output_data = []
-    for key, value in input_data:
-        # we use `extend` instead of `append` because the map function is expected to return
-        # a list of key-value pairs for each input key-value pair it processes.
-        output_data.extend(map_func(key, value))
+    # Apply the map function to each input key-value pair, and flatten the results into a single list
+    output_data = list(chain.from_iterable(map(lambda x: map_func(*x), input_data)))
 
     # Save the output data as a pickle file
     file_path = save_results_as_pickle(MAP_DIR, output_data)
@@ -76,9 +129,53 @@ def map_task():
 
 @app.route('/reduce', methods=['POST'])
 def reduce_task():
-    # Handle the reducer task
-    pass
+    """
+    Reduce task route.
+
+    POST request data should be in the following JSON format:
+    {
+        "reduce_func": "<serialized_reduce_func>",
+        "file_locations": [
+            ("<IP1>:<PORT1>", "file1"),
+            ("<IP2>:<PORT2>", "file2"),
+            ...
+        ]
+    }
+
+    `reduce_func`: Serialized reduce function, str (base64 encoded serialized function)
+
+    `file_locations`: List of locations where the intermediate data files are stored.
+
+    :return: The file path of the saved pickle file.
+    """
+    # Load the request data
+    data = request.get_json()
+
+    # Deserialize the reduce function
+    reduce_func = deserialize_func(data['reduce_func'])
+
+    # Fetch the data from the specified workers
+    data = fetch_data_from_workers(data['file_locations'])
+
+    # Group the data by key
+    grouped_data = groupby(data, key=itemgetter(0))
+
+    # Apply the reduce function to each group and collect the results
+    # Iterate over each group and apply the reduce function to the values of that group
+    # The result of reduce function applied to the values of each group is stored as a tuple of (key, result)
+    reduce_results = [
+        (key, reduce(reduce_func, map(itemgetter(1), group)))
+        for key, group in grouped_data
+    ]
+
+    # Save the results to a file and return the file path
+    output_file_path = save_results_as_pickle(REDUCE_DIR, reduce_results)
+
+    return output_file_path
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    # If the `PORT` environment variable is not set, it will default to 5000.
+    # For example, `docker run -e PORT=6000 my_worker_image`
+    port = int(os.getenv('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)

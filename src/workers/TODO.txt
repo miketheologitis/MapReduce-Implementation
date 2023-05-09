@@ -1,4 +1,0 @@
-1. COMMENTS EVERYWHERE
-2. The paper mentions that intermediate key/value pairs produced by map tasks are buffered in memory,
- then written to local disk, and later fetched by reduce workers. When implementing the worker, make sure
- to include this logic to store intermediate data on local disk and communicate its location to the master.
