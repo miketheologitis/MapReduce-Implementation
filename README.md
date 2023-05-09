@@ -1,12 +1,11 @@
 # Usage
-
-```bash
-~/MapReduce-Implementation$ python -m unittest tests.unit_tests.test_worker
-```
-
 Zookeeper:
 ```bash
 docker compose -f docker-compose.zookeeper.yaml up
+```
+Tests:
+```bash
+~/MapReduce-Implementation$ python -m unittest tests.unit_tests.test_worker
 ```
 
 # Initial Idea (will definitely change)

@@ -1,0 +1,17 @@
+
+
+1. Worker HOST vs IP ??
+* Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://147.27.117.146:5000 ???
+
+2. self.zk.ensure_path('/workers') better approach? Maybe not because it might already indeed exist
+
+
+
+4. Handling Connection Loss: The worker should also handle the case where it loses its
+ connection to the Zookeeper service. This might involve setting up a listener for
+ connection loss events and trying to reconnect when they occur.
+
+5. Cleanup: Finally, when the worker is shutting down, it should close its connection
+to Zookeeper. This can be done by calling the stop and close methods of the KazooClient.
