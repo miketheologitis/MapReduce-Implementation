@@ -5,8 +5,10 @@ import unittest
 import base64
 import pickle
 import random
-from src.workers.worker import app, MAP_DIR
-
+from unittest.mock import patch, call, mock_open
+from src.workers.worker import app, MAP_DIR, REDUCE_DIR
+import src.workers.worker as worker_module
+import io
 
 class TestWorker(unittest.TestCase):
     """
@@ -19,6 +21,32 @@ class TestWorker(unittest.TestCase):
         """
         app.testing = True
         self.client = app.test_client()
+
+    def test_fetch_data(self):
+        """
+        Unit test for the `fetch_data` endpoint in the `worker` module.
+        This function tests the case where a GET request is sent to the
+        `fetch_data` endpoint with a valid file path.
+        """
+        # Define the test data and save it to a file using `save_results_as_pickle`
+        test_data = [("key1", "value1"), ("key2", "value2"), ("key3", [{"hi": 2}, 2, 3])]
+        temp_file_path = worker_module.save_results_as_pickle(MAP_DIR, test_data)
+
+        # Send a GET request to the `fetch_data` endpoint with the
+        # path of the temporary file as a parameter
+        response = self.client.get('/fetch-data', query_string={'file_path': temp_file_path})
+
+        # Check the response status code
+        self.assertEqual(response.status_code, 200)
+
+        # Load the data from the response
+        response_data = pickle.loads(io.BytesIO(response.data).read())
+
+        # Close the response to avoid a ResourceWarning
+        response.close()
+
+        # Check that the data matches the test data
+        self.assertEqual(response_data, test_data)
 
     def test_map_task_creates_files(self):
         """
@@ -145,6 +173,108 @@ class TestWorker(unittest.TestCase):
             output_data = pickle.load(f)
 
         self.assertEqual(output_data, expected_output)
+
+    def test_reduce_task1(self):
+        # Mock fetch_data_from_workers to return the list of key-value pairs
+        fetched_data_from_workers = [('key1', 1), ('key1', 2), ('key2', 1)]
+
+        # Data after performing reduce with `reduce_func`
+        correct_result_data = [('key1', 3), ('key2', 1)]
+
+        self._test_reduce_task_helper(fetched_data_from_workers, lambda x, y: x+y, correct_result_data)
+
+    def test_reduce_task2(self):
+        # Mock fetch_data_from_workers to return the list of key-value pairs
+
+        val1 = [[1], 5, '2', {'x': 5}]
+        val2 = [['mike'], 5, '2', {5: '5'}]
+        val3 = [1, 2, 3]
+        val4 = ['?', '*']
+
+        fetched_data_from_workers = [
+            ('key1', val1), ('key1', val2), ('key2', val3), ('key2', val4)
+        ]
+
+        def reduce_func(x, y):
+            # concat lists
+            return [*x, *y]
+
+        correct_result_data = [('key1', [*val1, *val2]), ('key2', [*val3, *val4])]
+        self._test_reduce_task_helper(fetched_data_from_workers, reduce_func, correct_result_data)
+
+    @patch('src.workers.worker.fetch_data_from_workers')
+    def _test_reduce_task_helper(self, fetched_data_from_workers, reduce_func, correct_result_data, mock_fetch):
+
+        # Mock fetch_data_from_workers to return the list of key-value pairs
+        mock_fetch.return_value = fetched_data_from_workers
+
+        # Serialize the reduce function
+        serialized_reduce_func = base64.b64encode(dill.dumps(reduce_func)).decode('utf-8')
+
+        # Define the file locations
+        file_locations = [('localhost:5000', 'file1.pickle'), ('localhost:5001', 'file2.pickle')]
+
+        # Send the POST request
+        response = self.client.post('/reduce', json={
+            'reduce_func': serialized_reduce_func,
+            'file_locations': file_locations
+        })
+
+        # Check the response
+        self.assertEqual(response.status_code, 200)
+
+        # The response data is the path of the result file, so we can load it and check the results
+        result_file_path = response.data.decode()
+
+        with open(result_file_path, 'rb') as f:
+            result_data = pickle.load(f)
+
+        # Check that the result data is correct
+        self.assertEqual(result_data, correct_result_data)
+
+    @patch('requests.get')
+    def test_fetch_data_from_workers(self, mock_get):
+        """
+        Unit test for the `fetch_data_from_workers` function in the `worker` module.
+        This function tests the case where two different locations are provided and
+        the corresponding workers return some data.
+
+        The `patch` decorator is used to mock the `requests.get` function. This allows
+        us to simulate the behavior of `requests.get` in a controlled way without
+        actually making HTTP requests.
+
+        :param mock_get: A mock object which replaces `requests.get` for the duration
+                         of the test. This object is automatically provided by the
+                         `patch` decorator.
+        """
+        # Define the mock response
+        # `mock_get.return_value` represents the response that `requests.get` would
+        # normally return. We set its `content` attribute to the pickled version of
+        # our test data, simulating a worker that returns this data when requested.
+        mock_response = mock_get.return_value
+        mock_response.content = pickle.dumps([("key1", "value1"), ("key2", "value2")])
+
+        # Call the function with sample data
+        # We provide two file locations to `fetch_data_from_workers`. In a real-world
+        # scenario, these would represent the addresses and file paths of two different
+        # workers.
+        file_locations = [("localhost:5000", "path1"), ("localhost:5001", "path2")]
+        result = worker_module.fetch_data_from_workers(file_locations)
+
+        # Check the result
+        # Because we simulate two workers that both return `mock_response.content` the
+        # expected result is the following
+        expected_result = [('key1', 'value1'), ('key2', 'value2'), ('key1', 'value1'), ('key2', 'value2')]
+        self.assertEqual(result, expected_result)
+
+        # Check that requests.get was called with the correct arguments
+        # We expect `requests.get` to be called twice, once for each worker.
+        # We use `assert_has_calls` to ensure that these calls were made with the
+        # correct arguments. The `any_order` parameter allows the calls to occur
+        # in any order.
+        expected_calls = [call('http://localhost:5000/fetch-data', params={'file_path': 'path1'}),
+                          call('http://localhost:5001/fetch-data', params={'file_path': 'path2'})]
+        mock_get.assert_has_calls(expected_calls, any_order=True)
 
     def tearDown(self):
         # Clean up the temporary `.pickle` files created during the tests
