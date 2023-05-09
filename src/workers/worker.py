@@ -12,8 +12,8 @@ from functools import reduce
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MAP_DIR = os.path.join(BASE_DIR, "data/map_results")
-REDUCE_DIR = os.path.join(BASE_DIR, "data/reduce_results")
+MAP_DIR = os.path.join(BASE_DIR, "worker_data/map_results")
+REDUCE_DIR = os.path.join(BASE_DIR, "worker_data/reduce_results")
 
 app = Flask(__name__)
 
@@ -81,6 +81,18 @@ def fetch_data_from_workers(locations):
 
 @app.route('/fetch-data', methods=['GET'])
 def fetch_data():
+    """
+    Endpoint to fetch data stored in a file. This is used by other workers to fetch intermediate data for reduce tasks.
+    This endpoint expects a GET request with the following query parameters:
+
+    file_path: str
+        The path to the file that is to be fetched.
+
+    An example request might look like this: /fetch-data?file_path=/path/to/file
+
+    :return: The contents of the specified file as a download.
+    """
+
     file_path = request.args.get('file_path')
     return send_file(file_path, as_attachment=True)
 
