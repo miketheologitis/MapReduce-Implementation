@@ -9,7 +9,6 @@
 MapReduce-Implementation/
 ├── src/
 │   ├── __init__.py
-
 │   ├── workers/
 │   │   ├── __init__.py
 │   │   └── worker.py
