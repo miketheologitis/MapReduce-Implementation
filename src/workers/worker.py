@@ -93,6 +93,20 @@ def map_task():
     processes the input data using the map function, and saves the output
     data as a pickle file.
 
+    POST request data should be in the following JSON format:
+    {
+        "map_func": "<serialized_map_func>",
+        "data": [
+            ("key1", "value1"),
+            ("key2", "value2"),
+            ...
+        ]
+    }
+
+    `map_func`: Serialized map function. str (base64 encoded serialized function)
+
+    `data`: Input data on which map function is to be applied.
+
     :return: The file path of the saved pickle file.
     """
     data = request.get_json()
@@ -116,11 +130,23 @@ def map_task():
 @app.route('/reduce', methods=['POST'])
 def reduce_task():
     """
-    The reduce task that will be performed by the worker.
+    Reduce task route.
 
-    The worker receives a serialized reduce function and a list of locations
-    where the intermediate data files are stored. The worker fetches the data,
-    applies the reduce function and returns the result.
+    POST request data should be in the following JSON format:
+    {
+        "reduce_func": "<serialized_reduce_func>",
+        "file_locations": [
+            ("<IP1>:<PORT1>", "file1"),
+            ("<IP2>:<PORT2>", "file2"),
+            ...
+        ]
+    }
+
+    `reduce_func`: Serialized reduce function, str (base64 encoded serialized function)
+
+    `file_locations`: List of locations where the intermediate data files are stored.
+
+    :return: The file path of the saved pickle file.
     """
     # Load the request data
     data = request.get_json()
