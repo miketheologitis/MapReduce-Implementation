@@ -7,7 +7,13 @@
 
 2. self.zk.ensure_path('/workers') better approach? Maybe not because it might already indeed exist
 
+3. WEIRD APPROACH?? MAYBE BETTER
+# initialization
+zk_client = ZookeeperClient(ZK_HOSTS)
+app = Flask(__name__)
 
+# Create the worker node in Zookeeper
+zk_client.register_worker(WORKER_ID, HOST, PORT)
 
 4. Handling Connection Loss: The worker should also handle the case where it loses its
  connection to the Zookeeper service. This might involve setting up a listener for
