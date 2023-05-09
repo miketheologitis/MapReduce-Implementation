@@ -4,6 +4,11 @@
 ~/MapReduce-Implementation$ python -m unittest tests.unit_tests.test_worker
 ```
 
+Zookeeper:
+```bash
+docker compose -f docker-compose.zookeeper.yaml up
+```
+
 # Initial Idea (will definitely change)
 ```markdown
 MapReduce-Implementation/
