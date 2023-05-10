@@ -1,1 +1,1 @@
-1. EXPOSE $PORT inside Dockerfile??
+1. 'IP:PORT' approach in worker.py needs changing. Work with HOSTNAMES
