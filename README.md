@@ -1,11 +1,29 @@
 # Usage
+
 Zookeeper:
 ```bash
-docker compose -f docker-compose.zookeeper.yaml up
+docker pull zookeeper
 ```
-Tests:
+
 ```bash
-~/MapReduce-Implementation$ python -m unittest tests.unit_tests.test_worker
+docker compose -f docker-compose.yaml up```
+```
+
+Scale workers:
+```bash
+docker compose up --scale worker=1
+```
+
+```bash
+python -m unittest tests.unit_tests.test_worker
+```
+
+```bash
+docker compose down
+```
+
+```bash
+docker exec -it <CONTAINERID>
 ```
 
 # Initial Idea (will definitely change)
@@ -30,5 +48,6 @@ MapReduce-Implementation/
 │       ├── ...
 ├── README.md
 ├── requirements.txt
+├── docker-compose.zookeeper.yaml
 └── main.py
 ```

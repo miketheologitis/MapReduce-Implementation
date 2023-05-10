@@ -12,9 +12,8 @@ from functools import reduce
 
 from ..zookeeper.zookeeper_client import ZookeeperClient
 
-PORT = int(os.getenv('PORT', 5000))
-WORKER_IP = os.getenv('WORKER_IP', 'localhost')
-WORKER_ID = os.getenv('WORKER_ID', 'worker1')
+# Try to find the 1st parameter in env variables, else default to the second.
+HOSTNAME = os.getenv('HOSTNAME', 'localhost')
 ZK_HOSTS = os.getenv('ZK_HOSTS', 'localhost:2181')
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -130,7 +129,7 @@ def map_task():
     :return: The file path of the saved pickle file.
     """
 
-    zk_client.update_worker_state(WORKER_ID, 'in-progress')
+    zk_client.update_worker_state(HOSTNAME, 'in-progress')
 
     data = request.get_json()
 
@@ -146,7 +145,7 @@ def map_task():
     # Save the output data as a pickle file
     file_path = save_results_as_pickle(MAP_DIR, output_data)
 
-    zk_client.update_worker_state(WORKER_ID, 'completed', file_path)
+    zk_client.update_worker_state(HOSTNAME, 'completed', file_path)
 
     # Return the file path of the saved pickle file
     return file_path
@@ -173,7 +172,7 @@ def reduce_task():
 
     :return: The file path of the saved pickle file.
     """
-    zk_client.update_worker_state(WORKER_ID, 'in-progress')
+    zk_client.update_worker_state(HOSTNAME, 'in-progress')
 
     # Load the request data
     data = request.get_json()
@@ -198,13 +197,14 @@ def reduce_task():
     # Save the results to a file and return the file path
     file_path = save_results_as_pickle(REDUCE_DIR, reduce_results)
 
-    zk_client.update_worker_state(WORKER_ID, 'completed', file_path)
+    zk_client.update_worker_state(HOSTNAME, 'completed', file_path)
 
     return file_path
 
 
 if __name__ == '__main__':
-    # Create the worker z-node in Zookeeper
-    zk_client.register_worker(WORKER_ID, WORKER_IP, PORT)
 
-    app.run(host=WORKER_IP, port=PORT)
+    # Create the worker z-node in Zookeeper
+    zk_client.register_worker(HOSTNAME)
+
+    app.run(host=HOSTNAME, port=5000)

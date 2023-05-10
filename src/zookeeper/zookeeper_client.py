@@ -4,8 +4,7 @@ from kazoo.client import KazooClient
 
 
 class WorkerInfo(NamedTuple):
-    ip: str
-    port: int
+    hostname : str
     state: str = 'idle'
     task_file: str = None
 
@@ -16,43 +15,41 @@ class ZookeeperClient:
         self.zk.start()
         self.zk.ensure_path('/workers')
 
-    def register_worker(self, worker_id, worker_ip, worker_port, state='idle', task_file=None):
+    def register_worker(self, worker_hostname, state='idle', task_file=None):
         """
         Register a worker in Zookeeper.
 
-        :param worker_id: The ID of the worker.
-        :param worker_ip: The IP address of the worker.
-        :param worker_port: The port of the worker.
+        :param worker_hostname: The hostname of the worker inside the Docker-Compose network.
         :param state: The state of the worker. Defaults to 'idle'.
         :param task_file: The file path of the task assigned to the worker. Defaults to None.
         """
-        path = f'/workers/{worker_id}'
-        data = WorkerInfo(worker_ip, worker_port, state, task_file)
+        path = f'/workers/{worker_hostname}'
+        data = WorkerInfo(worker_hostname, state, task_file)
         self.zk.create(path, pickle.dumps(data), ephemeral=True)
 
-    def update_worker_state(self, worker_id, state, task_file=None):
+    def update_worker_state(self, worker_hostname, state, task_file=None):
         """
         Update the state of a worker in Zookeeper.
 
-        :param worker_id: The ID of the worker.
+        :param worker_hostname: The hostname of the worker inside the Docker-Compose network.
         :param state: The new state of the worker.
         :param task_file: The new file path of the task assigned to the worker.
         """
 
-        path = f'/workers/{worker_id}'
+        path = f'/workers/{worker_hostname}'
         data, _ = self.zk.get(path)
         worker_info = pickle.loads(data)
         updated_info = worker_info._replace(state=state, task_file=task_file)
         self.zk.set(path, pickle.dumps(updated_info))
 
-    def get_worker_state(self, worker_id):
+    def get_worker_state(self, worker_hostname):
         """
         Retrieve the state of a worker from Zookeeper.
 
-        :param worker_id: The ID of the worker.
+        :param worker_hostname: The hostname of the worker inside the Docker-Compose network.
         :return: `WorkerInfo`
         """
-        path = f'/workers/{worker_id}'
+        path = f'/workers/{worker_hostname}'
         data, _ = self.zk.get(path)
         worker_info = pickle.loads(data)
         return worker_info
@@ -63,10 +60,10 @@ class ZookeeperClient:
 
         :return: A list of WorkerInfo for all workers in the "idle" state.
         """
-        worker_ids = self.zk.get_children('/workers')
+        worker_hostnames = self.zk.get_children('/workers')
         idle_workers = []
-        for worker_id in worker_ids:
-            path = f'/workers/{worker_id}'
+        for worker_hostname in worker_hostnames:
+            path = f'/workers/{worker_hostname}'
             data, _ = self.zk.get(path)
             worker_info = pickle.loads(data)
             if worker_info.state == 'idle':
