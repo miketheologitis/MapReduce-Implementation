@@ -1,0 +1,1 @@
+1. EXPOSE $PORT inside Dockerfile??

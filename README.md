@@ -1,7 +1,29 @@
 # Usage
 
+Zookeeper:
 ```bash
-~/MapReduce-Implementation$ python -m unittest tests.unit_tests.test_worker
+docker pull zookeeper
+```
+
+```bash
+docker compose -f docker-compose.yaml up```
+```
+
+Scale workers:
+```bash
+docker compose up --scale worker=1
+```
+
+```bash
+python -m unittest tests.unit_tests.test_worker
+```
+
+```bash
+docker compose down
+```
+
+```bash
+docker exec -it <CONTAINERID>
 ```
 
 # Initial Idea (will definitely change)
@@ -9,30 +31,9 @@
 MapReduce-Implementation/
 ├── src/
 │   ├── __init__.py
-│   ├── user_interface/
-│   │   ├── __init__.py
-│   │   ├── client.py
-│   │   ├── jobs.py
-│   │   └── admin.py
-│   ├── authentication/
-│   │   ├── __init__.py
-│   │   └── authentication_service.py
-│   ├── monitoring/
-│   │   ├── __init__.py
-│   │   └── monitoring_service.py
 │   ├── workers/
 │   │   ├── __init__.py
 │   │   └── worker.py
-│   ├── common/
-│   │   ├── __init__.py
-│   │   ├── input_format.py
-│   │   └── output_format.py
-│   ├── configs/
-│   │   ├── __init__.py
-│   │   └── configurations.py
-│   ├── orchestration/
-│   │   ├── __init__.py
-│   │   └── container_manager.py
 │   └── zookeeper/
 │       ├── __init__.py
 │       └── zookeeper_client.py
@@ -47,5 +48,6 @@ MapReduce-Implementation/
 │       ├── ...
 ├── README.md
 ├── requirements.txt
+├── docker-compose.zookeeper.yaml
 └── main.py
 ```

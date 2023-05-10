@@ -10,11 +10,18 @@ from operator import itemgetter
 from itertools import groupby, chain
 from functools import reduce
 
+from ..zookeeper.zookeeper_client import ZookeeperClient
+
+# Try to find the 1st parameter in env variables, else default to the second.
+HOSTNAME = os.getenv('HOSTNAME', 'localhost')
+ZK_HOSTS = os.getenv('ZK_HOSTS', 'localhost:2181')
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MAP_DIR = os.path.join(BASE_DIR, "data/map_results")
-REDUCE_DIR = os.path.join(BASE_DIR, "data/reduce_results")
+MAP_DIR = os.path.join(BASE_DIR, "map_results")
+REDUCE_DIR = os.path.join(BASE_DIR, "reduce_results")
 
+# initialization
+zk_client = ZookeeperClient(ZK_HOSTS)
 app = Flask(__name__)
 
 
@@ -81,6 +88,18 @@ def fetch_data_from_workers(locations):
 
 @app.route('/fetch-data', methods=['GET'])
 def fetch_data():
+    """
+    Endpoint to fetch data stored in a file. This is used by other workers to fetch intermediate data for reduce tasks.
+    This endpoint expects a GET request with the following query parameters:
+
+    file_path: str
+        The path to the file that is to be fetched.
+
+    An example request might look like this: /fetch-data?file_path=/path/to/file
+
+    :return: The contents of the specified file as a download.
+    """
+
     file_path = request.args.get('file_path')
     return send_file(file_path, as_attachment=True)
 
@@ -109,6 +128,9 @@ def map_task():
 
     :return: The file path of the saved pickle file.
     """
+
+    zk_client.update_worker_state(HOSTNAME, 'in-progress')
+
     data = request.get_json()
 
     # Deserialize the reduce function
@@ -122,6 +144,8 @@ def map_task():
 
     # Save the output data as a pickle file
     file_path = save_results_as_pickle(MAP_DIR, output_data)
+
+    zk_client.update_worker_state(HOSTNAME, 'completed', file_path)
 
     # Return the file path of the saved pickle file
     return file_path
@@ -148,10 +172,12 @@ def reduce_task():
 
     :return: The file path of the saved pickle file.
     """
+    zk_client.update_worker_state(HOSTNAME, 'in-progress')
+
     # Load the request data
     data = request.get_json()
 
-    # Deserialize the reduce function
+    # Deserialize the worker_id reduce function
     reduce_func = deserialize_func(data['reduce_func'])
 
     # Fetch the data from the specified workers
@@ -169,13 +195,16 @@ def reduce_task():
     ]
 
     # Save the results to a file and return the file path
-    output_file_path = save_results_as_pickle(REDUCE_DIR, reduce_results)
+    file_path = save_results_as_pickle(REDUCE_DIR, reduce_results)
 
-    return output_file_path
+    zk_client.update_worker_state(HOSTNAME, 'completed', file_path)
+
+    return file_path
 
 
 if __name__ == '__main__':
-    # If the `PORT` environment variable is not set, it will default to 5000.
-    # For example, `docker run -e PORT=6000 my_worker_image`
-    port = int(os.getenv('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+
+    # Create the worker z-node in Zookeeper
+    zk_client.register_worker(HOSTNAME)
+
+    app.run(host=HOSTNAME, port=5000)
