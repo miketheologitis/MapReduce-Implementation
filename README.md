@@ -1,21 +1,21 @@
 # Usage
+```bash
+pip install -r requirements.txt
+```
 
 Zookeeper:
 ```bash
 docker pull zookeeper
 ```
 
+Create-Scale workers:
 ```bash
-docker-compose -f docker-compose.yaml up -d```
-```
-
-Scale workers:
-```bash
-docker-compose up -d --scale worker=5
+docker-compose up -d --scale worker=6 --no-recreate
 ```
 
 ```bash
 python -m unittest tests.unit_tests.test_worker
+python -m unittest integration_tests.unit_tests.test_worker
 ```
 
 ```bash
@@ -26,7 +26,7 @@ docker-compose down
 docker exec -it <CONTAINERID>
 ```
 
-# Initial Idea (will definitely change)
+# Current repo
 ```markdown
 MapReduce-Implementation/
 ├── src/
@@ -40,17 +40,22 @@ MapReduce-Implementation/
 │       └── zookeeper_client.py
 ├── tests/
 │   ├── __init__.py
+│   ├── integration_tests/
+│   │   ├── __init__.py
+│   │   ├── test_worker.py
+│   │   ├── ...
 │   ├── unit_tests/
 │   │   ├── __init__.py
 │   │   ├── test_worker.py
-│       ├── ...
+│   │   ├── ...
 │   └── integration_tests/
-│       ├── __init__.py
+│   │   ├── __init__.py
+│   │   ├── test_worker.py
 │       ├── ...
 ├── README.md
 ├── requirements.txt
 ├── Dockerfile.worker
 ├── TODO.txt
-├── docker-compose.zookeeper.yaml
+├── docker-compose.yaml
 └── main.py
 ```
