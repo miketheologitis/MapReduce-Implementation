@@ -12,7 +12,8 @@ from functools import reduce
 
 from ..zookeeper.zookeeper_client import ZookeeperClient
 
-# Try to find the 1st parameter in env variables, else default to the second.
+# Try to find the 1st parameter in env variables which will be set up by docker-compose
+# (see the .yaml file), else default to the second.
 HOSTNAME = os.getenv('HOSTNAME', 'localhost')
 ZK_HOSTS = os.getenv('ZK_HOSTS', 'localhost:2181')
 
