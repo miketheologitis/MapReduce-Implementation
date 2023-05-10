@@ -13,7 +13,7 @@ from functools import reduce
 from ..zookeeper.zookeeper_client import ZookeeperClient
 
 PORT = int(os.getenv('PORT', 5000))
-WORKER_IP = os.getenv('IP', 'localhost')
+WORKER_IP = os.getenv('WORKER_IP', 'localhost')
 WORKER_ID = os.getenv('WORKER_ID', 'worker1')
 ZK_HOSTS = os.getenv('ZK_HOSTS', 'localhost:2181')
 
