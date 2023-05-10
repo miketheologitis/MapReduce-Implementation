@@ -4,7 +4,7 @@ from kazoo.client import KazooClient
 
 
 class WorkerInfo(NamedTuple):
-    hostname : str
+    hostname: str
     state: str = 'idle'
     task_file: str = None
 
