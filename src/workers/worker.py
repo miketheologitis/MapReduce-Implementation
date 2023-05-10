@@ -10,11 +10,19 @@ from operator import itemgetter
 from itertools import groupby, chain
 from functools import reduce
 
+from ..zookeeper.zookeeper_client import ZookeeperClient
+
+PORT = int(os.getenv('PORT', 5000))
+WORKER_IP = os.getenv('IP', 'localhost')
+WORKER_ID = os.getenv('WORKER_ID', 'worker1')
+ZK_HOSTS = os.getenv('ZK_HOSTS', 'localhost:2181')
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MAP_DIR = os.path.join(BASE_DIR, "worker_data/map_results")
-REDUCE_DIR = os.path.join(BASE_DIR, "worker_data/reduce_results")
+MAP_DIR = os.path.join(BASE_DIR, "map_results")
+REDUCE_DIR = os.path.join(BASE_DIR, "reduce_results")
 
+# initialization
+zk_client = ZookeeperClient(ZK_HOSTS)
 app = Flask(__name__)
 
 
@@ -121,6 +129,9 @@ def map_task():
 
     :return: The file path of the saved pickle file.
     """
+
+    zk_client.update_worker_state(WORKER_ID, 'in-progress')
+
     data = request.get_json()
 
     # Deserialize the reduce function
@@ -134,6 +145,8 @@ def map_task():
 
     # Save the output data as a pickle file
     file_path = save_results_as_pickle(MAP_DIR, output_data)
+
+    zk_client.update_worker_state(WORKER_ID, 'completed', file_path)
 
     # Return the file path of the saved pickle file
     return file_path
@@ -160,10 +173,12 @@ def reduce_task():
 
     :return: The file path of the saved pickle file.
     """
+    zk_client.update_worker_state(WORKER_ID, 'in-progress')
+
     # Load the request data
     data = request.get_json()
 
-    # Deserialize the reduce function
+    # Deserialize the worker_id reduce function
     reduce_func = deserialize_func(data['reduce_func'])
 
     # Fetch the data from the specified workers
@@ -181,13 +196,15 @@ def reduce_task():
     ]
 
     # Save the results to a file and return the file path
-    output_file_path = save_results_as_pickle(REDUCE_DIR, reduce_results)
+    file_path = save_results_as_pickle(REDUCE_DIR, reduce_results)
 
-    return output_file_path
+    zk_client.update_worker_state(WORKER_ID, 'completed', file_path)
+
+    return file_path
 
 
 if __name__ == '__main__':
-    # If the `PORT` environment variable is not set, it will default to 5000.
-    # For example, `docker run -e PORT=6000 my_worker_image`
-    port = int(os.getenv('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+    # Create the worker z-node in Zookeeper
+    zk_client.register_worker(WORKER_ID, WORKER_IP, PORT)
+
+    app.run(host=WORKER_IP, port=PORT)

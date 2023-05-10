@@ -5,10 +5,11 @@ import unittest
 import base64
 import pickle
 import random
-from unittest.mock import patch, call, mock_open
+from unittest.mock import patch, call, Mock
 from src.workers.worker import app, MAP_DIR, REDUCE_DIR
 import src.workers.worker as worker_module
 import io
+
 
 class TestWorker(unittest.TestCase):
     """
@@ -48,7 +49,8 @@ class TestWorker(unittest.TestCase):
         # Check that the data matches the test data
         self.assertEqual(response_data, test_data)
 
-    def test_map_task_creates_files(self):
+    @patch('src.workers.worker.zk_client.update_worker_state')
+    def test_map_task_creates_files(self, mock_update_worker_state):
         """
         Test that the `map_task` creates the expected output files.
         """
@@ -137,7 +139,8 @@ class TestWorker(unittest.TestCase):
         # Call the _test_map_task_helper method with the input data and mapper function
         self._test_map_task_helper(input_data, map_func)
 
-    def _test_map_task_helper(self, input_data, map_func):
+    @patch('src.workers.worker.zk_client.update_worker_state')
+    def _test_map_task_helper(self, input_data, map_func, mock_update_worker_state):
         """
         Helper method to test the map task of the worker.
 
@@ -202,8 +205,10 @@ class TestWorker(unittest.TestCase):
         correct_result_data = [('key1', [*val1, *val2]), ('key2', [*val3, *val4])]
         self._test_reduce_task_helper(fetched_data_from_workers, reduce_func, correct_result_data)
 
+    @patch('src.workers.worker.zk_client.update_worker_state')
     @patch('src.workers.worker.fetch_data_from_workers')
-    def _test_reduce_task_helper(self, fetched_data_from_workers, reduce_func, correct_result_data, mock_fetch):
+    def _test_reduce_task_helper(self, fetched_data_from_workers, reduce_func, correct_result_data,
+                                 mock_fetch, mock_update_worker_state):
 
         # Mock fetch_data_from_workers to return the list of key-value pairs
         mock_fetch.return_value = fetched_data_from_workers
@@ -280,6 +285,8 @@ class TestWorker(unittest.TestCase):
         # Clean up the temporary `.pickle` files created during the tests
         for file in os.listdir(MAP_DIR):
             os.remove(os.path.join(MAP_DIR, file))
+        for file in os.listdir(REDUCE_DIR):
+            os.remove(os.path.join(REDUCE_DIR, file))
 
 
 if __name__ == '__main__':

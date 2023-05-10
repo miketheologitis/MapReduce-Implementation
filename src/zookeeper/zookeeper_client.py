@@ -40,8 +40,36 @@ class ZookeeperClient:
         """
 
         path = f'/workers/{worker_id}'
-        data = self.zk.get(path)
-        worker_info = pickle.loads(data[0])
+        data, _ = self.zk.get(path)
+        worker_info = pickle.loads(data)
         updated_info = worker_info._replace(state=state, task_file=task_file)
         self.zk.set(path, pickle.dumps(updated_info))
+
+    def get_worker_state(self, worker_id):
+        """
+        Retrieve the state of a worker from Zookeeper.
+
+        :param worker_id: The ID of the worker.
+        :return: `WorkerInfo`
+        """
+        path = f'/workers/{worker_id}'
+        data, _ = self.zk.get(path)
+        worker_info = pickle.loads(data)
+        return worker_info
+
+    def get_idle_workers(self):
+        """
+        Retrieve information about all workers that are currently in the "idle" state.
+
+        :return: A list of WorkerInfo for all workers in the "idle" state.
+        """
+        worker_ids = self.zk.get_children('/workers')
+        idle_workers = []
+        for worker_id in worker_ids:
+            path = f'/workers/{worker_id}'
+            data, _ = self.zk.get(path)
+            worker_info = pickle.loads(data)
+            if worker_info.state == 'idle':
+                idle_workers.append(worker_info)
+        return idle_workers
 
