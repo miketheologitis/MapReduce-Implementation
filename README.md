@@ -26,6 +26,26 @@ docker-compose down
 docker exec -it <CONTAINERID>
 ```
 
+### Map Function
+Map Function assumed to return a list of key-value pairs for a single feeded element.
+Takes as input a tuple with +1 elements (X,) is enough
+
+Example: f( ("mike",) ) -> [(m, 1), (i, 1), (k, 1), (e, 1)]
+         f( ("george",) ) -> [(g, 1), (e, 1), (k, 1), ...]
+         f( ("m",) ) -> [(m, 1)]
+
+Input:
+    [("mike",), ("george",), ("123",)]
+Result:
+    [('m', 1), ('i', 1), ('k', 1), ('e', 1), ('g', 1), ('e', 1),
+    ('o', 1), ('r', 1), ('g', 1), ('e', 1), ('1', 1), ('2', 1),
+    ('3', 1)]
+
+### Reduce Function
+Reduce function assumes (key, value) tuples as input and does the obvious. 
+
+Notice that in the map function we allow more freedom, i.e., (X, ..., ...)
+
 # Current repo
 ```markdown
 MapReduce-Implementation/
