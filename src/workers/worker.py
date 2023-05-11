@@ -46,11 +46,7 @@ class Worker:
             "master_hostname": "<HOSTNAME>"
             "task_id": "<int>"
             "map_func": "<serialized_map_func>",
-            "data": [
-                ("key1", "value1"),
-                ("key2", "value2"),
-                ...
-            ]
+            "data": [ (X,...,...), (Y, ... , ...), ... ]
         }
 
         `master_hostname`: Master hostname that submitted the task to us.
