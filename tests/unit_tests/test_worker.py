@@ -157,6 +157,21 @@ class TestWorker(unittest.TestCase):
         # Call the _test_map_task_helper method with the input data and mapper function
         self._test_map_task_helper(input_data, map_func)
 
+    def test_map_task_5(self):
+        """
+        Test that the map_task method can handle single elements
+
+        Input:
+            [("mike",), ("george",), ("123",)]
+        Result:
+            [('m', 1), ('i', 1), ('k', 1), ('e', 1), ('g', 1), ('e', 1),
+            ('o', 1), ('r', 1), ('g', 1), ('e', 1), ('1', 1), ('2', 1),
+            ('3', 1)]
+
+        """
+        input_data = [("mike",), ("george",), ("123",)]
+        self._test_map_task_helper(input_data, lambda x: map(lambda letter: (letter, 1), x))
+
     def _test_map_task_helper(self, input_data, map_func):
         """
         Helper method to test the map task of the worker.
@@ -193,7 +208,7 @@ class TestWorker(unittest.TestCase):
         output_file_path = args[3]
 
         # Check if the content of the output file matches the expected result
-        expected_output = [pair for key, value in input_data for pair in map_func(key, value)]
+        expected_output = [result for elem in input_data for result in map_func(*elem)]
         with open(output_file_path, 'rb') as f:
             output_data = pickle.load(f)
 
