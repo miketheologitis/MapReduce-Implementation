@@ -1,1 +1,1 @@
-1. EXPOSE $PORT inside Dockerfile??
+2. return `file_path`, why. return flask.jsonify({'file_path': file_path})
