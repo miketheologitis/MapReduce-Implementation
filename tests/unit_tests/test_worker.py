@@ -13,6 +13,7 @@ from src.workers.worker import app, Worker, worker, MAP_DIR, REDUCE_DIR
 mock_zk_client = create_autospec(ZookeeperClient)
 # Mock the update_worker_state method on the ZookeeperClient
 mock_zk_client.update_worker_state.return_value = None
+mock_zk_client.update_task.return_value = None
 
 
 class TestWorker(unittest.TestCase):
@@ -80,14 +81,19 @@ class TestWorker(unittest.TestCase):
         for _ in range(100):
             # Send the request to the worker
             response = self.client.post('/map', json={
+                'task_id': '1',
+                'master_hostname': 'master_hostname1',
                 'map_func': encoded_map_func,
                 'data': input_data
             })
             # Check the response status
             self.assertEqual(response.status_code, 200)
 
-            # Get the output file path from the response
-            output_file_path = response.data.decode('utf-8')
+            # Retrieve the arguments of the last call to update_task
+            args, _ = mock_zk_client.update_task.call_args
+
+            # Retrieve the fourth argument
+            output_file_path = args[3]
 
             # Assert that the output file exists
             self.assertTrue(os.path.exists(output_file_path))
@@ -171,6 +177,8 @@ class TestWorker(unittest.TestCase):
 
         # Send the request to the worker
         response = self.client.post('/map', json={
+            'task_id': '1',
+            'master_hostname': 'master_hostname1',
             'map_func': encoded_map_func,
             'data': input_data
         })
@@ -178,8 +186,11 @@ class TestWorker(unittest.TestCase):
         # Check the response status
         self.assertEqual(response.status_code, 200)
 
-        # Get the output file path from the response
-        output_file_path = response.data.decode('utf-8')
+        # Retrieve the arguments of the last call to update_task
+        args, _ = mock_zk_client.update_task.call_args
+
+        # Retrieve the fourth argument
+        output_file_path = args[3]
 
         # Check if the content of the output file matches the expected result
         expected_output = [pair for key, value in input_data for pair in map_func(key, value)]
@@ -229,6 +240,8 @@ class TestWorker(unittest.TestCase):
 
             # Send the POST request
             response = self.client.post('/reduce', json={
+                'task_id': '1',
+                'master_hostname': 'master_hostname1',
                 'reduce_func': serialized_reduce_func,
                 'file_locations': file_locations
             })
@@ -236,10 +249,13 @@ class TestWorker(unittest.TestCase):
             # Check the response
             self.assertEqual(response.status_code, 200)
 
-            # The response data is the path of the result file, so we can load it and check the results
-            result_file_path = response.data.decode()
+            # Retrieve the arguments of the last call to update_task
+            args, _ = mock_zk_client.update_task.call_args
 
-            with open(result_file_path, 'rb') as f:
+            # Retrieve the fourth argument
+            output_file_path = args[3]
+
+            with open(output_file_path, 'rb') as f:
                 result_data = pickle.load(f)
 
             # Check that the result data is correct

@@ -43,6 +43,8 @@ class Worker:
 
         POST request data should be in the following JSON format:
         {
+            "master_hostname": "<HOSTNAME>"
+            "task_id": "<int>"
             "map_func": "<serialized_map_func>",
             "data": [
                 ("key1", "value1"),
@@ -51,22 +53,24 @@ class Worker:
             ]
         }
 
+        `master_hostname`: Master hostname that submitted the task to us.
+        `task_id`: Unique string ID for the task. Will be stored in z-node `tasks/<master_hostname>/<task_id>.pickle
         `map_func`: Serialized map function. str (base64 encoded serialized function)
-
         `data`: Input data on which map function is to be applied.
 
         :return: The file path of the saved pickle file.
         """
+        req_data = request.get_json()
+
         zk_client = self.get_zk_client()
         zk_client.update_worker_state(HOSTNAME, 'in-progress')
-
-        data = request.get_json()
+        zk_client.update_task(req_data['task_id'], req_data['master_hostname'], 'in-progress')
 
         # Deserialize the reduce function
-        map_func = self.deserialize_func(data['map_func'])
+        map_func = self.deserialize_func(req_data['map_func'])
 
         # Extract the input data from the POST request data
-        input_data = data['data']
+        input_data = req_data['data']
 
         # Apply the map function to each input key-value pair, and flatten the results into a single list
         output_data = list(chain.from_iterable(map(lambda x: map_func(*x), input_data)))
@@ -74,7 +78,8 @@ class Worker:
         # Save the output data as a pickle file
         file_path = self.save_results_as_pickle(MAP_DIR, output_data)
 
-        zk_client.update_worker_state(HOSTNAME, 'completed', file_path)
+        zk_client.update_task(req_data['task_id'], req_data['master_hostname'], 'completed', file_path)
+        zk_client.update_worker_state(HOSTNAME, 'idle')
 
         # Return the file path of the saved pickle file
         return '', 200
@@ -85,6 +90,8 @@ class Worker:
 
         POST request data should be in the following JSON format:
         {
+            "master_hostname": "<HOSTNAME>"
+            "task_id": "<int>"
             "reduce_func": "<serialized_reduce_func>",
             "file_locations": [
                 ("<HOSTNAME1>:<PORT1>", "file1"),
@@ -93,23 +100,24 @@ class Worker:
             ]
         }
 
+        `master_hostname`: Master hostname that submitted the task to us.
+        `task_id`: Unique string ID for the task. Will be stored in z-node `tasks/<master_hostname>/<task_id>.pickle
         `reduce_func`: Serialized reduce function, str (base64 encoded serialized function)
-
         `file_locations`: List of locations where the intermediate data files are stored.
 
         :return: The file path of the saved pickle file.
         """
+        req_data = request.get_json()
+
         zk_client = self.get_zk_client()
         zk_client.update_worker_state(HOSTNAME, 'in-progress')
-
-        # Load the request data
-        data = request.get_json()
+        zk_client.update_task(req_data['task_id'], req_data['master_hostname'], 'in-progress')
 
         # Deserialize the worker_id reduce function
-        reduce_func = self.deserialize_func(data['reduce_func'])
+        reduce_func = self.deserialize_func(req_data['reduce_func'])
 
         # Fetch the data from the specified workers
-        data = self.fetch_data_from_workers(data['file_locations'])
+        data = self.fetch_data_from_workers(req_data['file_locations'])
 
         data.sort(key=itemgetter(0))
 
@@ -127,7 +135,8 @@ class Worker:
         # Save the results to a file and return the file path
         file_path = self.save_results_as_pickle(REDUCE_DIR, reduce_results)
 
-        zk_client.update_worker_state(HOSTNAME, 'completed', file_path)
+        zk_client.update_task(req_data['task_id'], req_data['master_hostname'], 'completed', file_path)
+        zk_client.update_worker_state(HOSTNAME, 'idle')
 
         return '', 200
 
@@ -175,7 +184,7 @@ class Worker:
             pickle.dump(data, f)
 
         # Return the file path of the saved pickle file
-        return '', 200
+        return file_path
 
     @staticmethod
     def deserialize_func(encoded_func):
