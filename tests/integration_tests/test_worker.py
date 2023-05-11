@@ -3,11 +3,11 @@ import unittest
 import requests
 import subprocess
 import yaml
-from src.zookeeper.zookeeper_client import ZookeeperClient
 import os
 import pickle
 import sys
 import time
+from src.zookeeper.zookeeper_client import ZookeeperClient
 
 
 class TestWorker(unittest.TestCase):

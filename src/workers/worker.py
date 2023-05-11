@@ -15,14 +15,16 @@ from ..zookeeper.zookeeper_client import ZookeeperClient
 # Try to find the 1st parameter in env variables which will be set up by docker-compose
 # (see the .yaml file), else default to the second.
 HOSTNAME = os.getenv('HOSTNAME', 'localhost')
-ZK_HOSTS = os.getenv('ZK_HOSTS', 'localhost:2181')
+ZK_HOSTS = os.getenv('ZK_HOSTS', '127.0.0.1:2181')
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MAP_DIR = os.path.join(BASE_DIR, "map_results")
 REDUCE_DIR = os.path.join(BASE_DIR, "reduce_results")
 
-# initialization
+
+# Initialize `ZookeeperClient`
 zk_client = ZookeeperClient(ZK_HOSTS)
+
 app = Flask(__name__)
 
 
@@ -71,7 +73,7 @@ def fetch_data_from_workers(locations):
     """
     Fetches intermediate data from the specified workers.
 
-    :param: locations: A list of ('IP:PORT', file_path) tuples representing the
+    :param: locations: A list of ("<HOSTNAME1>:<PORT1>", file_path) tuples representing the
             addresses of the workers and the file paths of the intermediate data.
 
     :returns: The fetched data as a single list of key-value pairs.
@@ -161,8 +163,8 @@ def reduce_task():
     {
         "reduce_func": "<serialized_reduce_func>",
         "file_locations": [
-            ("<IP1>:<PORT1>", "file1"),
-            ("<IP2>:<PORT2>", "file2"),
+            ("<HOSTNAME1>:<PORT1>", "file1"),
+            ("<HOSTNAME2>:<PORT2>", "file2"),
             ...
         ]
     }
@@ -204,8 +206,7 @@ def reduce_task():
 
 
 if __name__ == '__main__':
-
     # Create the worker z-node in Zookeeper
     zk_client.register_worker(HOSTNAME)
 
-    app.run(host=HOSTNAME, port=5000)
+    app.run(host='0.0.0.0', port=5000)

@@ -5,10 +5,12 @@ import unittest
 import base64
 import pickle
 import random
-from unittest.mock import patch, call, Mock
-from src.workers.worker import app, MAP_DIR, REDUCE_DIR
-import src.workers.worker as worker_module
+from unittest.mock import patch, call
 import io
+import subprocess
+import time
+from src.workers.worker import save_results_as_pickle, fetch_data_from_workers,\
+    app, MAP_DIR, REDUCE_DIR
 
 
 class TestWorker(unittest.TestCase):
@@ -23,6 +25,13 @@ class TestWorker(unittest.TestCase):
         app.testing = True
         self.client = app.test_client()
 
+    def tearDown(self):
+        # Clean up the temporary `.pickle` files created during the tests
+        for file in os.listdir(MAP_DIR):
+            os.remove(os.path.join(MAP_DIR, file))
+        for file in os.listdir(REDUCE_DIR):
+            os.remove(os.path.join(REDUCE_DIR, file))
+
     def test_fetch_data(self):
         """
         Unit test for the `fetch_data` endpoint in the `worker` module.
@@ -31,7 +40,7 @@ class TestWorker(unittest.TestCase):
         """
         # Define the test data and save it to a file using `save_results_as_pickle`
         test_data = [("key1", "value1"), ("key2", "value2"), ("key3", [{"hi": 2}, 2, 3])]
-        temp_file_path = worker_module.save_results_as_pickle(MAP_DIR, test_data)
+        temp_file_path = save_results_as_pickle(MAP_DIR, test_data)
 
         # Send a GET request to the `fetch_data` endpoint with the
         # path of the temporary file as a parameter
@@ -264,7 +273,7 @@ class TestWorker(unittest.TestCase):
         # scenario, these would represent the addresses and file paths of two different
         # workers.
         file_locations = [("localhost:5000", "path1"), ("localhost:5001", "path2")]
-        result = worker_module.fetch_data_from_workers(file_locations)
+        result = fetch_data_from_workers(file_locations)
 
         # Check the result
         # Because we simulate two workers that both return `mock_response.content` the
@@ -280,13 +289,6 @@ class TestWorker(unittest.TestCase):
         expected_calls = [call('http://localhost:5000/fetch-data', params={'file_path': 'path1'}),
                           call('http://localhost:5001/fetch-data', params={'file_path': 'path2'})]
         mock_get.assert_has_calls(expected_calls, any_order=True)
-
-    def tearDown(self):
-        # Clean up the temporary `.pickle` files created during the tests
-        for file in os.listdir(MAP_DIR):
-            os.remove(os.path.join(MAP_DIR, file))
-        for file in os.listdir(REDUCE_DIR):
-            os.remove(os.path.join(REDUCE_DIR, file))
 
 
 if __name__ == '__main__':

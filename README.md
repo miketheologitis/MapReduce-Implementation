@@ -15,7 +15,7 @@ docker-compose up -d --scale worker=6 --no-recreate
 
 ```bash
 python -m unittest tests.unit_tests.test_worker
-python -m unittest integration_tests.unit_tests.test_worker
+python -m unittest tests.integration_tests.test_worker
 ```
 
 ```bash
