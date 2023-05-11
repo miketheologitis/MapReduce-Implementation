@@ -1,1 +1,1 @@
-1. 'IP:PORT' approach in worker.py needs changing. Work with HOSTNAMES
+2. return `file_path`, why. return flask.jsonify({'file_path': file_path})
