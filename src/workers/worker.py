@@ -129,7 +129,7 @@ class Worker:
 
         zk_client.update_worker_state(HOSTNAME, 'completed', file_path)
 
-        return file_path
+        return '', 200
 
     def run(self):
         zk_client = self.get_zk_client()
@@ -175,7 +175,7 @@ class Worker:
             pickle.dump(data, f)
 
         # Return the file path of the saved pickle file
-        return file_path
+        return '', 200
 
     @staticmethod
     def deserialize_func(encoded_func):
