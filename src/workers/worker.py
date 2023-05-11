@@ -77,7 +77,7 @@ class Worker:
         zk_client.update_worker_state(HOSTNAME, 'completed', file_path)
 
         # Return the file path of the saved pickle file
-        return file_path
+        return '', 200
 
     def reduce_task(self):
         """
