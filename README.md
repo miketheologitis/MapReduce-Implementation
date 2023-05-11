@@ -48,10 +48,6 @@ MapReduce-Implementation/
 │   │   ├── __init__.py
 │   │   ├── test_worker.py
 │   │   ├── ...
-│   └── integration_tests/
-│   │   ├── __init__.py
-│   │   ├── test_worker.py
-│       ├── ...
 ├── README.md
 ├── requirements.txt
 ├── Dockerfile.worker
