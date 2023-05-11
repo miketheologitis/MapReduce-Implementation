@@ -59,7 +59,7 @@ class Worker:
         req_data = request.get_json()
 
         zk_client = self.get_zk_client()
-        zk_client.update_worker_state(HOSTNAME, 'in-progress')
+        zk_client.update_worker_state(HOSTNAME, 'in-task')
         zk_client.update_task(req_data['task_id'], req_data['master_hostname'], 'in-progress')
 
         # Deserialize the reduce function
@@ -106,7 +106,7 @@ class Worker:
         req_data = request.get_json()
 
         zk_client = self.get_zk_client()
-        zk_client.update_worker_state(HOSTNAME, 'in-progress')
+        zk_client.update_worker_state(HOSTNAME, 'in-task')
         zk_client.update_task(req_data['task_id'], req_data['master_hostname'], 'in-progress')
 
         # Deserialize the worker_id reduce function

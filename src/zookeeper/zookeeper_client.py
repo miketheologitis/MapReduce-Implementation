@@ -23,11 +23,12 @@ from kazoo.client import KazooClient
 
 class WorkerInfo(NamedTuple):
     hostname: str
-    state: str = 'idle'  # 'idle', 'in-progress'
+    state: str = 'idle'  # 'idle', 'in-task'
 
 
 class MasterInfo(NamedTuple):
     hostname: str
+    state: str = 'idle'  # 'idle', 'in-job'
 
 
 class TaskInfo(NamedTuple):
