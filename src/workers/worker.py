@@ -58,7 +58,7 @@ class Worker:
         `map_func`: Serialized map function. str (base64 encoded serialized function)
         `data`: Input data on which map function is to be applied.
 
-        :return: The file path of the saved pickle file.
+        :return: status `ok`
         """
         req_data = request.get_json()
 
@@ -105,7 +105,7 @@ class Worker:
         `reduce_func`: Serialized reduce function, str (base64 encoded serialized function)
         `file_locations`: List of locations where the intermediate data files are stored.
 
-        :return: The file path of the saved pickle file.
+        :return: status `ok`
         """
         req_data = request.get_json()
 
