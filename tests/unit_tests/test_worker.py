@@ -5,12 +5,14 @@ import unittest
 import base64
 import pickle
 import random
-from unittest.mock import patch, call
+from unittest.mock import patch, call, create_autospec
 import io
-import subprocess
-import time
-from src.workers.worker import save_results_as_pickle, fetch_data_from_workers,\
-    app, MAP_DIR, REDUCE_DIR
+from src.zookeeper.zookeeper_client import ZookeeperClient
+from src.workers.worker import app, Worker, worker, MAP_DIR, REDUCE_DIR
+
+mock_zk_client = create_autospec(ZookeeperClient)
+# Mock the update_worker_state method on the ZookeeperClient
+mock_zk_client.update_worker_state.return_value = None
 
 
 class TestWorker(unittest.TestCase):
@@ -24,6 +26,8 @@ class TestWorker(unittest.TestCase):
         """
         app.testing = True
         self.client = app.test_client()
+        # Mock the get_zk_client method to return the mock_zk_client
+        worker.get_zk_client = lambda: mock_zk_client
 
     def tearDown(self):
         # Clean up the temporary `.pickle` files created during the tests
@@ -40,7 +44,7 @@ class TestWorker(unittest.TestCase):
         """
         # Define the test data and save it to a file using `save_results_as_pickle`
         test_data = [("key1", "value1"), ("key2", "value2"), ("key3", [{"hi": 2}, 2, 3])]
-        temp_file_path = save_results_as_pickle(MAP_DIR, test_data)
+        temp_file_path = Worker.save_results_as_pickle(MAP_DIR, test_data)
 
         # Send a GET request to the `fetch_data` endpoint with the
         # path of the temporary file as a parameter
@@ -58,8 +62,7 @@ class TestWorker(unittest.TestCase):
         # Check that the data matches the test data
         self.assertEqual(response_data, test_data)
 
-    @patch('src.workers.worker.zk_client.update_worker_state')
-    def test_map_task_creates_files(self, mock_update_worker_state):
+    def test_map_task_creates_files(self):
         """
         Test that the `map_task` creates the expected output files.
         """
@@ -148,8 +151,7 @@ class TestWorker(unittest.TestCase):
         # Call the _test_map_task_helper method with the input data and mapper function
         self._test_map_task_helper(input_data, map_func)
 
-    @patch('src.workers.worker.zk_client.update_worker_state')
-    def _test_map_task_helper(self, input_data, map_func, mock_update_worker_state):
+    def _test_map_task_helper(self, input_data, map_func):
         """
         Helper method to test the map task of the worker.
 
@@ -214,37 +216,34 @@ class TestWorker(unittest.TestCase):
         correct_result_data = [('key1', [*val1, *val2]), ('key2', [*val3, *val4])]
         self._test_reduce_task_helper(fetched_data_from_workers, reduce_func, correct_result_data)
 
-    @patch('src.workers.worker.zk_client.update_worker_state')
-    @patch('src.workers.worker.fetch_data_from_workers')
-    def _test_reduce_task_helper(self, fetched_data_from_workers, reduce_func, correct_result_data,
-                                 mock_fetch, mock_update_worker_state):
+    def _test_reduce_task_helper(self, fetched_data_from_workers, reduce_func, correct_result_data):
 
-        # Mock fetch_data_from_workers to return the list of key-value pairs
-        mock_fetch.return_value = fetched_data_from_workers
+        with patch.object(worker, 'fetch_data_from_workers', return_value=fetched_data_from_workers) as mock_fetch:
+            # Mock fetch_data_from_workers to return the list of key-value pairs
 
-        # Serialize the reduce function
-        serialized_reduce_func = base64.b64encode(dill.dumps(reduce_func)).decode('utf-8')
+            # Serialize the reduce function
+            serialized_reduce_func = base64.b64encode(dill.dumps(reduce_func)).decode('utf-8')
 
-        # Define the file locations
-        file_locations = [('localhost:5000', 'file1.pickle'), ('localhost:5001', 'file2.pickle')]
+            # Define the file locations
+            file_locations = [('localhost:5000', 'file1.pickle'), ('localhost:5001', 'file2.pickle')]
 
-        # Send the POST request
-        response = self.client.post('/reduce', json={
-            'reduce_func': serialized_reduce_func,
-            'file_locations': file_locations
-        })
+            # Send the POST request
+            response = self.client.post('/reduce', json={
+                'reduce_func': serialized_reduce_func,
+                'file_locations': file_locations
+            })
 
-        # Check the response
-        self.assertEqual(response.status_code, 200)
+            # Check the response
+            self.assertEqual(response.status_code, 200)
 
-        # The response data is the path of the result file, so we can load it and check the results
-        result_file_path = response.data.decode()
+            # The response data is the path of the result file, so we can load it and check the results
+            result_file_path = response.data.decode()
 
-        with open(result_file_path, 'rb') as f:
-            result_data = pickle.load(f)
+            with open(result_file_path, 'rb') as f:
+                result_data = pickle.load(f)
 
-        # Check that the result data is correct
-        self.assertEqual(result_data, correct_result_data)
+            # Check that the result data is correct
+            self.assertEqual(result_data, correct_result_data)
 
     @patch('requests.get')
     def test_fetch_data_from_workers(self, mock_get):
@@ -273,7 +272,7 @@ class TestWorker(unittest.TestCase):
         # scenario, these would represent the addresses and file paths of two different
         # workers.
         file_locations = [("localhost:5000", "path1"), ("localhost:5001", "path2")]
-        result = fetch_data_from_workers(file_locations)
+        result = Worker.fetch_data_from_workers(file_locations)
 
         # Check the result
         # Because we simulate two workers that both return `mock_response.content` the
