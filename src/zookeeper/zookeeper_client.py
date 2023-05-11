@@ -98,6 +98,20 @@ class ZookeeperClient:
         updated_worker_info = worker_info._replace(state=state)
         self.zk.set(path, pickle.dumps(updated_worker_info))
 
+    def update_master_state(self, master_hostname, state):
+        """
+        Update the state of a worker in Zookeeper.
+
+        :param master_hostname: The hostname of the master inside the Docker-Compose network.
+        :param state: The new state of the master.
+        """
+
+        path = f'/masters/{master_hostname}'
+        data, _ = self.zk.get(path)
+        master_info = pickle.loads(data)
+        updated_master_info = master_info._replace(state=state)
+        self.zk.set(path, pickle.dumps(updated_master_info))
+
     def update_task(self, task_id, master_hostname, state, worker_file_path=None):
         """
         Update task
