@@ -80,7 +80,7 @@ class TestWorker(unittest.TestCase):
 
         for _ in range(100):
             # Send the request to the worker
-            response = self.client.post('/map', json={
+            response = self.client.post('/map-task', json={
                 'task_id': '1',
                 'master_hostname': 'master_hostname1',
                 'map_func': encoded_map_func,
@@ -176,7 +176,7 @@ class TestWorker(unittest.TestCase):
         encoded_map_func = base64.b64encode(serialized_map_func).decode("utf-8")
 
         # Send the request to the worker
-        response = self.client.post('/map', json={
+        response = self.client.post('/map-task', json={
             'task_id': '1',
             'master_hostname': 'master_hostname1',
             'map_func': encoded_map_func,
@@ -239,7 +239,7 @@ class TestWorker(unittest.TestCase):
             file_locations = [('localhost:5000', 'file1.pickle'), ('localhost:5001', 'file2.pickle')]
 
             # Send the POST request
-            response = self.client.post('/reduce', json={
+            response = self.client.post('/reduce-task', json={
                 'task_id': '1',
                 'master_hostname': 'master_hostname1',
                 'reduce_func': serialized_reduce_func,

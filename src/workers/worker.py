@@ -226,12 +226,12 @@ class Worker:
 worker = Worker()
 
 
-@app.route('/map', methods=['POST'])
+@app.route('/map-task', methods=['POST'])
 def map_task():
     return worker.map_task()
 
 
-@app.route('/reduce', methods=['POST'])
+@app.route('/reduce-task', methods=['POST'])
 def reduce_task():
     return worker.reduce_task()
 
