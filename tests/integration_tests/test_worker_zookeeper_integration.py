@@ -21,7 +21,7 @@ class TestWorker(unittest.TestCase):
 
         # This was needed because even though the docker-compose ends, containers
         # need some more time to be reachable
-        time.sleep(10)
+        time.sleep(15)
 
         cls.num_docker_workers = 0
         cls.worker_hostnames = []
@@ -67,7 +67,7 @@ class TestWorker(unittest.TestCase):
 
         # This was needed because even though the docker-compose ends, containers
         # need some more time to be reachable
-        time.sleep(10)
+        time.sleep(15)
 
         self._test_no_workers_destroyed_in_scaling(n)
         self.num_docker_workers += n
