@@ -1,8 +1,12 @@
-1. In `master` rethink of the `zk_client` usage. First, restructure `zk_client`
+2. Create singleton tests of the methods
+    - `test_hdfs_client` singleton
+    - `test_zookeeper_client` singleton
 
-2. Fix Worker everything
+4. Fix Worker everything
     - Add shuffle task
     - Save results into HDFS
     - Save in Zookeeper
 
-3. Fix Zookeeper API, eveyrthing actually
+5. worker-hdfs-zookeeper integration test.
+
+6. master complete the code, think thoroughly of the filesystem structure.
