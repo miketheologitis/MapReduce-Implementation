@@ -1,6 +1,8 @@
-1. Fix Worker everything
+1. In `master` rethink of the `zk_client` usage. First, restructure `zk_client`
+
+2. Fix Worker everything
     - Add shuffle task
     - Save results into HDFS
     - Save in Zookeeper
 
-2. Fix Zookeeper API, eveyrthing actually
+3. Fix Zookeeper API, eveyrthing actually

@@ -84,12 +84,35 @@ services:
       dockerfile: Dockerfile.worker
     environment:
       ZK_HOSTS: zoo1:2181,zoo2:2181,zoo3:2181
+      HDFS_HOST: namenode:9000
     ports:
       - 53152-54152:5000
     depends_on:
       - zoo1
       - zoo2
       - zoo3
+      - namenode
+      - datanode
+      - resourcemanager
+      - nodemanager1
+
+  master:
+    build:
+      context: .
+      dockerfile: Dockerfile.master
+    environment:
+      ZK_HOSTS: zoo1:2181,zoo2:2181,zoo3:2181
+      HDFS_HOST: namenode:9000
+    ports:
+      - 54153-55152:5000
+    depends_on:
+      - zoo1
+      - zoo2
+      - zoo3
+      - namenode
+      - datanode
+      - resourcemanager
+      - nodemanager1
 
 volumes:
   hadoop_namenode:

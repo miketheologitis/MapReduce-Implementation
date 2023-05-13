@@ -10,7 +10,7 @@ docker pull zookeeper
 
 Create-Scale workers:
 ```bash
-docker-compose up -d --scale worker=6 --no-recreate
+docker-compose up -d --scale master=1 --scale worker=1 --no-recreate
 ```
 
 ```bash
@@ -57,7 +57,7 @@ Notice that in the map function we allow more freedom, i.e., `(X, ..., ...)`.
 
 ```python
 from hdfs import InsecureClient
-hdfs = InsecureClient('http://localhost:9870')
+hdfs = InsecureClient('http://localhost:9870', user='mapreduce')
 hdfs.status('/')
 ```
 
