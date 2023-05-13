@@ -15,6 +15,7 @@ docker-compose up -d --scale worker=6 --no-recreate
 
 ```bash
 python -m unittest tests.unit_tests.test_worker
+python -m unittest tests.unit_tests.test_master
 python -m unittest tests.integration_tests.test_worker_zookeeper_integration
 ```
 
@@ -50,6 +51,15 @@ Result:
 Reduce function assumes `(key, value)` tuples as input and does the obvious.
 
 Notice that in the map function we allow more freedom, i.e., `(X, ..., ...)`.
+
+
+## HDFS
+
+```python
+from hdfs import InsecureClient
+hdfs = InsecureClient('http://localhost:9870')
+hdfs.status('/')
+```
 
 # Current repo
 ```markdown

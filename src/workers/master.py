@@ -1,17 +1,14 @@
+from typing import NamedTuple, List
 from flask import Flask, request
 import os
 
 from ..zookeeper.zookeeper_client import ZookeeperClient
+from ..hadoop.hdfs_client import HdfsClient
 
 # Try to find the 1st parameter in env variables which will be set up by docker-compose
 # (see the .yaml file), else default to the second.
 HOSTNAME = os.getenv('HOSTNAME', 'localhost')
 ZK_HOSTS = os.getenv('ZK_HOSTS', '127.0.0.1:2181')
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-#MAP_DIR = os.path.join(BASE_DIR, "map_results")
-#REDUCE_DIR = os.path.join(BASE_DIR, "reduce_results")
-
 
 app = Flask(__name__)
 
@@ -19,11 +16,17 @@ app = Flask(__name__)
 class Master:
     def __init__(self):
         self.zk_client = None
+        self.hdfs_client = None
 
     def get_zk_client(self):
         if self.zk_client is None:
             self.zk_client = ZookeeperClient(ZK_HOSTS)
         return self.zk_client
+
+    def get_hdfs_client(self):
+        if self.hdfs_client is None:
+            self.hdfs_client = HdfsClient()
+        return self.hdfs_client
 
     def add_map_reduce_job(self):
         """

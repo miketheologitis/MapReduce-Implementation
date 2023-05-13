@@ -1,1 +1,6 @@
-2. return `file_path`, why. return flask.jsonify({'file_path': file_path})
+1. Fix Worker everything
+    - Add shuffle task
+    - Save results into HDFS
+    - Save in Zookeeper
+
+2. Fix Zookeeper API, eveyrthing actually
