@@ -1,1 +1,6 @@
-2. return `file_path`, why. return flask.jsonify({'file_path': file_path})
+3. fix test_worker
+
+4. complete master
+
+8. Master down ability. Not supported right now. Simple `JobInfo` with master `HOSTNAME`
+    suffices. Will think later :)

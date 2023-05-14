@@ -3,6 +3,7 @@ version: '3.7'
 services:
   zoo1:
     image: zookeeper
+    container_name: zookeeper1
     restart: always
     hostname: zoo1
     ports:
@@ -13,6 +14,7 @@ services:
 
   zoo2:
     image: zookeeper
+    container_name: zookeeper2
     restart: always
     hostname: zoo2
     ports:
@@ -23,6 +25,7 @@ services:
 
   zoo3:
     image: zookeeper
+    container_name: zookeeper3
     restart: always
     hostname: zoo3
     ports:
@@ -31,15 +34,89 @@ services:
       ZOO_MY_ID: 3
       ZOO_SERVERS: server.1=zoo1:2888:3888;2181 server.2=zoo2:2888:3888;2181 server.3=zoo3:2888:3888;2181
 
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    hostname: namenode
+    container_name: namenode
+    restart: always
+    ports:
+      - 9870:9870
+      - 9000:9000
+    volumes:
+      - hadoop_namenode:/hadoop/dfs/name
+    environment:
+      - CLUSTER_NAME=test
+    env_file:
+      - ./hadoop.env
+
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    hostname: datanode
+    container_name: datanode
+    restart: always
+    ports:
+      - 9864:9864
+    volumes:
+      - hadoop_datanode:/hadoop/dfs/data
+    environment:
+      SERVICE_PRECONDITION: "namenode:9870"
+    env_file:
+      - ./hadoop.env
+
+  resourcemanager:
+    image: bde2020/hadoop-resourcemanager:2.0.0-hadoop3.2.1-java8
+    container_name: resourcemanager
+    restart: always
+    environment:
+      SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode:9864"
+    env_file:
+      - ./hadoop.env
+
+  nodemanager1:
+    image: bde2020/hadoop-nodemanager:2.0.0-hadoop3.2.1-java8
+    container_name: nodemanager
+    restart: always
+    environment:
+      SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode:9864 resourcemanager:8088"
+    env_file:
+      - ./hadoop.env
+
   worker:
     build:
       context: .
       dockerfile: Dockerfile.worker
     environment:
       ZK_HOSTS: zoo1:2181,zoo2:2181,zoo3:2181
+      HDFS_HOST: namenode:9000
     ports:
-      - 49152-50152:5000
+      - 53152-54152:5000
     depends_on:
       - zoo1
       - zoo2
       - zoo3
+      - namenode
+      - datanode
+      - resourcemanager
+      - nodemanager1
+
+  master:
+    build:
+      context: .
+      dockerfile: Dockerfile.master
+    environment:
+      ZK_HOSTS: zoo1:2181,zoo2:2181,zoo3:2181
+      HDFS_HOST: namenode:9000
+    ports:
+      - 54153-55152:5000
+    depends_on:
+      - zoo1
+      - zoo2
+      - zoo3
+      - namenode
+      - datanode
+      - resourcemanager
+      - nodemanager1
+
+volumes:
+  hadoop_namenode:
+  hadoop_datanode:

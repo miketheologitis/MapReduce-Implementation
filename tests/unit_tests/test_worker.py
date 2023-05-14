@@ -1,19 +1,10 @@
 import unittest
-import os
-import dill
-import unittest
-import base64
-import pickle
 import random
 from unittest.mock import patch, call, create_autospec
-import io
 from src.zookeeper.zookeeper_client import ZookeeperClient
-from src.workers.worker import app, Worker, worker, MAP_DIR, REDUCE_DIR
-
-mock_zk_client = create_autospec(ZookeeperClient)
-# Mock the update_worker_state method on the ZookeeperClient
-mock_zk_client.update_worker_state.return_value = None
-mock_zk_client.update_task.return_value = None
+from src.hadoop.hdfs_client import HdfsClient
+from hdfs import InsecureClient
+from src.workers.worker import app, worker
 
 
 class TestWorker(unittest.TestCase):
@@ -21,82 +12,23 @@ class TestWorker(unittest.TestCase):
     This class contains unit tests for the `worker` module.
     """
 
-    def setUp(self):
-        """
-        Set up the test client for the Flask app.
-        """
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.mock_zk_client = create_autospec(ZookeeperClient)
+        cls.mock_hdfs_client = create_autospec(HdfsClient)
+        cls.mock_hdfs = create_autospec(InsecureClient)
+        cls.mock_hdfs_client.hdfs = cls.mock_hdfs
+
+        # Mock the update_worker_state method on the ZookeeperClient
+        cls.mock_zk_client.update_worker.return_value = None
+        cls.mock_zk_client.update_task.return_value = None
+
+        cls.mock_hdfs_client.save_data.return_value = None
+
         app.testing = True
-        self.client = app.test_client()
-        # Mock the get_zk_client method to return the mock_zk_client
-        worker.get_zk_client = lambda: mock_zk_client
-
-    def tearDown(self):
-        # Clean up the temporary `.pickle` files created during the tests
-        for file in os.listdir(MAP_DIR):
-            os.remove(os.path.join(MAP_DIR, file))
-        for file in os.listdir(REDUCE_DIR):
-            os.remove(os.path.join(REDUCE_DIR, file))
-
-    def test_fetch_data(self):
-        """
-        Unit test for the `fetch_data` endpoint in the `worker` module.
-        This function tests the case where a GET request is sent to the
-        `fetch_data` endpoint with a valid file path.
-        """
-        # Define the test data and save it to a file using `save_results_as_pickle`
-        test_data = [("key1", "value1"), ("key2", "value2"), ("key3", [{"hi": 2}, 2, 3])]
-        temp_file_path = Worker.save_results_as_pickle(MAP_DIR, test_data)
-
-        # Send a GET request to the `fetch_data` endpoint with the
-        # path of the temporary file as a parameter
-        response = self.client.get('/fetch-data', query_string={'file_path': temp_file_path})
-
-        # Check the response status code
-        self.assertEqual(response.status_code, 200)
-
-        # Load the data from the response
-        response_data = pickle.loads(io.BytesIO(response.data).read())
-
-        # Close the response to avoid a ResourceWarning
-        response.close()
-
-        # Check that the data matches the test data
-        self.assertEqual(response_data, test_data)
-
-    def test_map_task_creates_files(self):
-        """
-        Test that the `map_task` creates the expected output files.
-        """
-        input_data = [("key1", 1), ("key2", 2), ("key3", 3)]
-
-        # Serialize the mapper function using `dill`
-        serialized_map_func = dill.dumps(lambda key, value: [(key, value)])  # Binary
-
-        # Convert to Base64-encoded format. Base64 encoding is a technique
-        # that takes binary data and represents it as an ASCII string. Also,
-        # using decode() method by default converts the bytes to a string using
-        # the UTF-8 encoding.
-        encoded_map_func = base64.b64encode(serialized_map_func).decode("utf-8")
-
-        for _ in range(100):
-            # Send the request to the worker
-            response = self.client.post('/map-task', json={
-                'task_id': '1',
-                'master_hostname': 'master_hostname1',
-                'map_func': encoded_map_func,
-                'data': input_data
-            })
-            # Check the response status
-            self.assertEqual(response.status_code, 200)
-
-            # Retrieve the arguments of the last call to update_task
-            args, _ = mock_zk_client.update_task.call_args
-
-            # Retrieve the fourth argument
-            output_file_path = args[3]
-
-            # Assert that the output file exists
-            self.assertTrue(os.path.exists(output_file_path))
+        cls.client = app.test_client()
+        worker.get_zk_client = lambda: cls.mock_zk_client
+        worker.get_hdfs_client = lambda: cls.mock_hdfs_client
 
     def test_map_task_1(self):
         """
@@ -181,144 +113,86 @@ class TestWorker(unittest.TestCase):
         :return: None.
         """
 
-        # Serialize the mapper function using `dill`
-        serialized_map_func = dill.dumps(map_func)  # Binary data
-
-        # Convert to Base64-encoded format. Base64 encoding is a technique
-        # that takes binary data and represents it as an ASCII string. Also,
-        # using decode() method by default converts the bytes to a string using
-        # the UTF-8 encoding.
-        encoded_map_func = base64.b64encode(serialized_map_func).decode("utf-8")
+        self.mock_hdfs_client.get_data.return_value = input_data
+        self.mock_hdfs_client.get_func.return_value = map_func
 
         # Send the request to the worker
-        response = self.client.post('/map-task', json={
-            'task_id': '1',
-            'master_hostname': 'master_hostname1',
-            'map_func': encoded_map_func,
-            'data': input_data
-        })
+        response = self.client.post('/map-task', json={'job_id': 1, 'task_id': 1})
 
         # Check the response status
         self.assertEqual(response.status_code, 200)
 
-        # Retrieve the arguments of the last call to update_task
-        args, _ = mock_zk_client.update_task.call_args
+        args, _ = self.mock_hdfs_client.save_data.call_args
 
-        # Retrieve the fourth argument
-        output_file_path = args[3]
+        # Retrieve the second argument
+        output_data = args[1]
 
         # Check if the content of the output file matches the expected result
         expected_output = [result for elem in input_data for result in map_func(*elem)]
-        with open(output_file_path, 'rb') as f:
-            output_data = pickle.load(f)
 
         self.assertEqual(output_data, expected_output)
 
-    def test_reduce_task1(self):
-        # Mock fetch_data_from_workers to return the list of key-value pairs
-        fetched_data_from_workers = [('key1', 1), ('key1', 2), ('key2', 1)]
-
-        # Data after performing reduce with `reduce_func`
-        correct_result_data = [('key1', 3), ('key2', 1)]
-
-        self._test_reduce_task_helper(fetched_data_from_workers, lambda x, y: x+y, correct_result_data)
-
-    def test_reduce_task2(self):
-        # Mock fetch_data_from_workers to return the list of key-value pairs
-
-        val1 = [[1], 5, '2', {'x': 5}]
-        val2 = [['mike'], 5, '2', {5: '5'}]
-        val3 = [1, 2, 3]
-        val4 = ['?', '*']
-
-        fetched_data_from_workers = [
-            ('key1', val1), ('key1', val2), ('key2', val3), ('key2', val4)
+    def test_shuffle_task1(self):
+        data = [
+            ('key1', 1), ('key1', 2), ('key1', {12: '3'}), ('key1', 4), ('key1', 5), ('key1', 6), ('key1', 7),
+            ('key2', 8), ('key2', 9), ('key2', 10), ('key2', {11: '5'}), ('key2', 12), ('key2', 13),
+            ('key2', 14), ('key2', [21, 22, 23, 25, 26, 27])
+        ]
+        correct_output = [
+            ('key1', [1, 2, {12: '3'}, 4, 5, 6, 7]),
+            ('key2', [8, 9, 10, {11: '5'}, 12, 13, 14, [21, 22, 23, 25, 26, 27]])
         ]
 
-        def reduce_func(x, y):
-            # concat lists
-            return [*x, *y]
+        self._test_shuffle_task(data, correct_output)
 
-        correct_result_data = [('key1', [*val1, *val2]), ('key2', [*val3, *val4])]
-        self._test_reduce_task_helper(fetched_data_from_workers, reduce_func, correct_result_data)
+    def _test_shuffle_task(self, input_data, correct_output):
+        self.mock_hdfs_client.get_data.return_value = input_data
+        self.mock_hdfs.list.return_value = [1]
 
-    def _test_reduce_task_helper(self, fetched_data_from_workers, reduce_func, correct_result_data):
+        # Send the POST request
+        response = self.client.post('/shuffle-task', json={'job_id': 1})
 
-        with patch.object(worker, 'fetch_data_from_workers', return_value=fetched_data_from_workers) as mock_fetch:
-            # Mock fetch_data_from_workers to return the list of key-value pairs
+        # Check the response
+        self.assertEqual(response.status_code, 200)
 
-            # Serialize the reduce function
-            serialized_reduce_func = base64.b64encode(dill.dumps(reduce_func)).decode('utf-8')
+        call_args_list = self.mock_hdfs_client.save_data.call_args_list[-2:]
 
-            # Define the file locations
-            file_locations = [('localhost:5000', 'file1.pickle'), ('localhost:5001', 'file2.pickle')]
+        output_data = []
+        for call_args in call_args_list:
+            args, _ = call_args
+            output_data.append(args[1])
 
-            # Send the POST request
-            response = self.client.post('/reduce-task', json={
-                'task_id': '1',
-                'master_hostname': 'master_hostname1',
-                'reduce_func': serialized_reduce_func,
-                'file_locations': file_locations
-            })
+        # Check that the result data is correct
+        self.assertEqual(output_data, correct_output)
 
-            # Check the response
-            self.assertEqual(response.status_code, 200)
+    def test_reduce_task1(self):
+        # Mock fetch_data_from_workers to return the list of key-value pairs
+        input_data = ('key1', [1, 2, 3, 4, 5, 6])
 
-            # Retrieve the arguments of the last call to update_task
-            args, _ = mock_zk_client.update_task.call_args
+        # Data after performing reduce with `reduce_func`
+        correct_result_data = [('key1', 21)]
 
-            # Retrieve the fourth argument
-            output_file_path = args[3]
+        self._test_reduce_task_helper(input_data, lambda x, y: x+y, correct_result_data)
 
-            with open(output_file_path, 'rb') as f:
-                result_data = pickle.load(f)
+    def _test_reduce_task_helper(self, input_data, reduce_func, correct_result_data):
 
-            # Check that the result data is correct
-            self.assertEqual(result_data, correct_result_data)
+        self.mock_hdfs_client.get_data.return_value = input_data
 
-    @patch('requests.get')
-    def test_fetch_data_from_workers(self, mock_get):
-        """
-        Unit test for the `fetch_data_from_workers` function in the `worker` module.
-        This function tests the case where two different locations are provided and
-        the corresponding workers return some data.
+        self.mock_hdfs_client.get_func.return_value = reduce_func
 
-        The `patch` decorator is used to mock the `requests.get` function. This allows
-        us to simulate the behavior of `requests.get` in a controlled way without
-        actually making HTTP requests.
+        # Send the POST request
+        response = self.client.post('/reduce-task', json={'job_id': 1, 'task_ids': [1]})
 
-        :param mock_get: A mock object which replaces `requests.get` for the duration
-                         of the test. This object is automatically provided by the
-                         `patch` decorator.
-        """
-        # Define the mock response
-        # `mock_get.return_value` represents the response that `requests.get` would
-        # normally return. We set its `content` attribute to the pickled version of
-        # our test data, simulating a worker that returns this data when requested.
-        mock_response = mock_get.return_value
-        mock_response.content = pickle.dumps([("key1", "value1"), ("key2", "value2")])
+        # Check the response
+        self.assertEqual(response.status_code, 200)
 
-        # Call the function with sample data
-        # We provide two file locations to `fetch_data_from_workers`. In a real-world
-        # scenario, these would represent the addresses and file paths of two different
-        # workers.
-        file_locations = [("localhost:5000", "path1"), ("localhost:5001", "path2")]
-        result = Worker.fetch_data_from_workers(file_locations)
+        args, _ = self.mock_hdfs_client.save_data.call_args
 
-        # Check the result
-        # Because we simulate two workers that both return `mock_response.content` the
-        # expected result is the following
-        expected_result = [('key1', 'value1'), ('key2', 'value2'), ('key1', 'value1'), ('key2', 'value2')]
-        self.assertEqual(result, expected_result)
+        # Retrieve the second argument
+        output_data = args[1]
 
-        # Check that requests.get was called with the correct arguments
-        # We expect `requests.get` to be called twice, once for each worker.
-        # We use `assert_has_calls` to ensure that these calls were made with the
-        # correct arguments. The `any_order` parameter allows the calls to occur
-        # in any order.
-        expected_calls = [call('http://localhost:5000/fetch-data', params={'file_path': 'path1'}),
-                          call('http://localhost:5001/fetch-data', params={'file_path': 'path2'})]
-        mock_get.assert_has_calls(expected_calls, any_order=True)
+        # Check that the result data is correct
+        self.assertEqual(output_data, correct_result_data)
 
 
 if __name__ == '__main__':

@@ -1,157 +1,201 @@
-from typing import NamedTuple
+from typing import NamedTuple, List
 import pickle
 from kazoo.client import KazooClient
+from kazoo.recipe.lock import Lock
 
 """
 /
-├── workers/
-│   ├── <HOSTNAME>
+├── workers/    (created by `user` `not ephemeral`)
+│   ├── <HOSTNAME>      (created by `worker` on register `ephemeral`)
 │   ├── ...
-├── masters/
-│   ├── <HOSTNAME>
+├── masters/        (created by `user` `not ephemeral`)
+│   ├── <HOSTNAME>      (created by `master` on register `ephemeral`)
 │   ├── ...
-├── tasks/
-│   ├── <MASTER_HOSTNAME>/
-│   │   ├── <TASK_ID>
-│   │   ├── ...
-│   ├── <MASTER_HOSTNAME2>/
-│   │   ├── <TASK_ID>
-│   │   ├── ...
-│   ├── ...
+├── jobs/
+│   ├── <HOSTNAME>  `master` hostname. (created by ?)
+├── map_tasks/      (created by `user` `not ephemeral`)
+│   ├── <job_id>_<task_id>   
+├── shuffle_tasks/      (created by `user` `not ephemeral`)
+│   ├── <job_id>   
+├── reduce_tasks/      (created by `user` `not ephemeral`)
+│   ├── <job_id>_<task_id1>_<task_id1>...     , For example: 1_20_30_32 job_id : 1 , task_ids: [20,30,32]
+├── generators/  (created by `user` `not ephemeral`)
+│   ├── job_id_sequential
+├── locks/  (created by `user` `not ephemeral`)
+│   ├── get_workers_for_tasks_lock
+
 """
 
 
 class WorkerInfo(NamedTuple):
-    hostname: str
+    """
+    :param state: Task state ('idle', 'in-task').
+    """
     state: str = 'idle'  # 'idle', 'in-task'
 
 
 class MasterInfo(NamedTuple):
-    hostname: str
-    state: str = 'idle'  # 'idle', 'in-job'
+    state: str = 'nothing'
 
 
-class TaskInfo(NamedTuple):
-    task_id: int
-    worker_hostname: str
-    state: str = 'idle'  # 'idle', 'in-progress', 'completed'
-    worker_file_path: str = None  # where the worker saved the results of the task
+class Task(NamedTuple):
+    """
+    :param worker_hostname: Worker hostname that runs the task.
+    :param state: Task state ('idle', 'in-progress', 'completed').
+    """
+    worker_hostname: str = None
+    state: str = 'idle'
 
 
 class ZookeeperClient:
     def __init__(self, hosts):
         self.zk = KazooClient(hosts=hosts)
         self.zk.start()
-        self.zk.ensure_path('/workers')
-        self.zk.ensure_path('/masters')
-        self.zk.ensure_path('/tasks')
 
-    def register_worker(self, worker_hostname, state='idle'):
-        """
-        Register a worker in Zookeeper.
+    def setup_paths(self):
+        """Creates the necessary directories in ZooKeeper."""
+        paths = ['/workers', '/masters', '/map_tasks', '/shuffle_tasks', '/reduce_tasks', '/generators', 'locks']
+        for path in paths:
+            self.zk.create(path)
 
-        :param worker_hostname: The hostname of the worker inside the Docker-Compose network.
-        :param state: The state of the worker. Defaults to 'idle'.
+    def register_worker(self, worker_hostname):
         """
-        path = f'/workers/{worker_hostname}'
-        data = WorkerInfo(worker_hostname, state)
-        self.zk.create(path, pickle.dumps(data), ephemeral=True)
+        Registers a worker in ZooKeeper.
+
+        :param worker_hostname: Hostname of the worker.
+        """
+        worker_info = WorkerInfo()
+        serialized_worker_info = pickle.dumps(worker_info)
+        # The `ephemeral` flag ensures that the z-node is automatically deleted if
+        # the master disconnects
+        self.zk.create(f'/workers/{worker_hostname}', serialized_worker_info, ephemeral=True)
 
     def register_master(self, master_hostname):
         """
-        Register a master in Zookeeper.
+        Registers a master in ZooKeeper.
 
-        :param master_hostname: The hostname of the master inside the Docker-Compose network.
+        :param master_hostname: Hostname of the master.
         """
-        path = f'/master/{master_hostname}'
-        data = MasterInfo(master_hostname)
-        self.zk.create(path, pickle.dumps(data), ephemeral=True)
+        master_info = MasterInfo()
+        serialized_master_info = pickle.dumps(master_info)
+        # The `ephemeral` flag ensures that the z-node is automatically deleted if
+        # the master disconnects
+        self.zk.create(f'/masters/{master_hostname}', serialized_master_info, ephemeral=True)
 
-        # Create folder /tasks/<master_hostname>
-        self.zk.ensure_path(f'/tasks/{master_hostname}')
-
-    def register_task(self, master_hostname, worker_hostname, task_id):
+    def register_task(self, task_type, job_id, task_id=None):
         """
-        Register a task in Zookeeper. The master registers the tasks and provides a unique `task_id`.
-        More specifically, the `task_id` is unique to the specific master and will be stored in
-        tasks/<MASTER_HOSTNAME>/<TASK_ID>
+        Registers a task in ZooKeeper.
 
-        :param master_hostname: The hostname of the master inside the Docker-Compose network.
-        :param worker_hostname: The hostname of the worker who will perform the task
-        :param task_id: The unique task id
+        :param task_type: Task type ('map', 'reduce', 'shuffle').
+        :param job_id: Unique job ID.
+        :param task_id: Task ID (optional for 'map' and 'shuffle' tasks).
         """
-        path = f'tasks/{master_hostname}/{task_id}'
-        data = TaskInfo(task_id, worker_hostname)
-        self.zk.create(path, pickle.dumps(data), ephemeral=True)
+        task = Task()
+        serialized_task = pickle.dumps(task)
 
-    def update_worker_state(self, worker_hostname, state):
+        if task_type == 'map':
+            self.zk.create(f'/map_tasks/{job_id}_{task_id}', serialized_task)
+        elif task_type == 'reduce':
+            suffix_id = '_'.join(map(str, task_id))
+            self.zk.create(f'/reduce_tasks/{job_id}_{suffix_id}', serialized_task)
+        else:
+            self.zk.create(f'/shuffle_tasks/{job_id}', serialized_task)
+
+    def update_task(self, task_type, job_id, task_id=None, **kwargs):
         """
-        Update the state of a worker in Zookeeper.
+        Updates task information in ZooKeeper.
 
-        :param worker_hostname: The hostname of the worker inside the Docker-Compose network.
-        :param state: The new state of the worker.
+        :param task_type: Task type ('map', 'reduce', 'shuffle').
+        :param job_id: Unique job ID.
+        :param task_id: Task ID (optional for 'map' and 'shuffle' tasks).
+        :param kwargs: Additional attributes to update in the task.
         """
+        if task_type == 'map':
+            task_path = f'/map_tasks/{job_id}_{task_id}'
+        elif task_type == 'reduce':
+            suffix_id = '_'.join(map(str, task_id))
+            task_path = f'/reduce_tasks/{job_id}_{suffix_id}'
+        else:
+            task_path = f'/shuffle_tasks/{job_id}'
 
-        path = f'/workers/{worker_hostname}'
-        data, _ = self.zk.get(path)
-        worker_info = pickle.loads(data)
-        updated_worker_info = worker_info._replace(state=state)
-        self.zk.set(path, pickle.dumps(updated_worker_info))
+        serialized_task, _ = self.zk.get(task_path)
+        task = pickle.loads(serialized_task)
+        updated_task = task._replace(**kwargs)
+        self.zk.set(task_path, pickle.dumps(updated_task))
 
-    def update_master_state(self, master_hostname, state):
+    def update_worker(self, worker_hostname, **kwargs):
         """
-        Update the state of a worker in Zookeeper.
+        Updates worker information in ZooKeeper.
 
-        :param master_hostname: The hostname of the master inside the Docker-Compose network.
-        :param state: The new state of the master.
+        :param worker_hostname: Hostname of the worker.
+        :param kwargs: Additional attributes to update in the worker.
         """
+        worker_path = f'/workers/{worker_hostname}'
+        serialized_worker_info, _ = self.zk.get(worker_path)
+        worker_info = pickle.loads(serialized_worker_info)
+        updated_worker_info = worker_info._replace(**kwargs)
+        self.zk.set(worker_path, pickle.dumps(updated_worker_info))
 
-        path = f'/masters/{master_hostname}'
-        data, _ = self.zk.get(path)
-        master_info = pickle.loads(data)
-        updated_master_info = master_info._replace(state=state)
-        self.zk.set(path, pickle.dumps(updated_master_info))
-
-    def update_task(self, task_id, master_hostname, state, worker_file_path=None):
+    def get_workers_for_tasks(self, n):
         """
-        Update task
+        Retrieves 'idle' workers, marks them as 'in-task', and returns their hostnames.
 
-        :param master_hostname: The hostname of the master inside the Docker-Compose network.
-        :param task_id: The unique task id
-        :param state: The new state of the task 'in-progress' or 'completed'
-        :param worker_file_path: The file path in the worker container of the 'completed' task, else None
-        """
-        path = f'tasks/{master_hostname}/{task_id}'
-        data, _ = self.zk.get(path)
-        task_info = pickle.loads(data)
-        updated_task_info = task_info._replace(state=state, worker_file_path=worker_file_path)
-        self.zk.set(path, pickle.dumps(updated_task_info))
+        This method is protected by a distributed lock to ensure that only one client can
+        execute it at a time across the distributed system. This is necessary to avoid
+        race conditions that could occur when multiple clients try to assign tasks to workers
+        simultaneously.
 
-    def get_worker_state(self, worker_hostname):
-        """
-        Retrieve the state of a worker from Zookeeper.
+        The distributed lock is implemented with Zookeeper's Lock recipe, which provides
+        the guarantee of mutual exclusion even distributed system.
 
-        :param worker_hostname: The hostname of the worker inside the Docker-Compose network.
-        :return: `WorkerInfo`
+        :param n: Maximum number of idle workers to retrieve.
+        :return: List of worker hostnames.
         """
-        path = f'/workers/{worker_hostname}'
-        data, _ = self.zk.get(path)
-        worker_info = pickle.loads(data)
-        return worker_info
-
-    def get_idle_workers(self):
-        """
-        Retrieve information about all workers that are currently in the "idle" state.
-
-        :return: A list of WorkerInfo for all workers in the "idle" state.
-        """
-        worker_hostnames = self.zk.get_children('/workers')
         idle_workers = []
-        for worker_hostname in worker_hostnames:
-            path = f'/workers/{worker_hostname}'
-            data, _ = self.zk.get(path)
-            worker_info = pickle.loads(data)
-            if worker_info.state == 'idle':
-                idle_workers.append(worker_info)
+
+        with self.zk.Lock("/locks/get_workers_for_tasks_lock"):
+
+            # Get the children (worker hostnames) under the workers path
+            children = self.zk.get_children('/workers')
+
+            # Iterate over the children to find 'idle' workers
+            for hostname in children:
+                worker_path = f'/workers/{hostname}'
+                serialized_worker_info, _ = self.zk.get(worker_path)
+                worker_info = pickle.loads(serialized_worker_info)
+
+                if worker_info.state == 'idle':
+                    # Update the worker state to 'in-task'
+                    self.update_worker(hostname, state='in-task')
+
+                    # Add the worker hostname to the list of idle workers
+                    idle_workers.append(hostname)
+
+                    if len(idle_workers) == n:
+                        # If the desired number of idle workers is reached, break the loop
+                        break
+
         return idle_workers
 
+    def get(self, path):
+        serialized_data, _ = self.zk.get(path)
+        return pickle.loads(serialized_data)
+
+    def get_sequential_job_id(self):
+        """
+        Gets a sequential integer from ZooKeeper. ZooKeeper will ensure that the sequential IDs are unique and ordered
+        even when multiple application instances try to create IDs simultaneously.
+
+        :returns: Sequential integer.
+        """
+        # Create a sequential z-node under the /generators/job_id_sequential path
+        sequential_path = self.zk.create('/generators/job_id_sequential', sequence=True)
+
+        # Extract the sequential number from the z-node path
+        _, sequential_filename = sequential_path.rsplit('/', 1)
+
+        # Remove the prefix "job_id_sequential" from the sequential number
+        sequential_number = sequential_filename.replace("job_id_sequential", "")
+
+        # Convert the sequential number to an integer and return it
+        return int(sequential_number)
