@@ -1,11 +1,6 @@
 import unittest
-import requests
 import subprocess
-import yaml
-import os
-import pickle
 import time
-from src.workers.master import master
 from src.hadoop.hdfs_client import HdfsClient
 
 
@@ -37,8 +32,6 @@ class TestMasterHdfs(unittest.TestCase):
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
         )
-
-
 
 
 if __name__ == '__main__':

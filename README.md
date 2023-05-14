@@ -1,4 +1,14 @@
 # Usage
+
+Modify `/etc/hosts`, add the following:
+```
+127.0.0.1       datanode
+```
+This is needed because the hadoop namenode (that we talk to add files to hdfs) returns
+the hostname of the datanode (i.e., `datanode`) but this returned hostname is inside the docker-compose
+network. Everything is ok when we make the requests from inside the docker-compose network, but when 
+we make changes to hdfs from outside the network we have a problem. Modify it.
+
 ```bash
 pip install -r requirements.txt
 ```
@@ -68,25 +78,32 @@ MapReduce-Implementation/
 │   ├── __init__.py
 │   ├── workers/
 │   │   ├── __init__.py
-│   │   ├── master.py
-│   │   └── worker.py
-│   └── zookeeper/
-│       ├── __init__.py
-│       └── zookeeper_client.py
+│   │   ├── master.py  (+)
+│   │   └── worker.py  (+)
+│   ├── zookeeper/
+│   │   ├── __init__.py
+│   │   └── zookeeper_client.py
+│   ├── hadoop/
+│   │   ├── __init__.py
+│   │   └── hdfs_client.py
 ├── tests/
 │   ├── __init__.py
 │   ├── integration_tests/
 │   │   ├── __init__.py
-│   │   ├── test_worker.py
-│   │   ├── ...
+│   │   ├── test_hdfs_client.py
+│   │   ├── test_zookeeper_client.py (++)
+│   │   ├── test_master_hdfs.py (+)
+│   │   └── test_worker_zookeeper.py (+)
 │   ├── unit_tests/
 │   │   ├── __init__.py
-│   │   ├── test_worker.py
-│   │   ├── ...
+│   │   ├── test_worker.py  (+)
+│   │   └── test_master.py (+)
 ├── README.md
 ├── requirements.txt
 ├── Dockerfile.worker
+├── Dockerfile.master
 ├── TODO.txt
 ├── docker-compose.yaml
+├── hadoop.env
 └── main.py
 ```
