@@ -78,7 +78,7 @@ MapReduce-Implementation/
 │   ├── __init__.py
 │   ├── workers/
 │   │   ├── __init__.py
-│   │   ├── master.py  (+)
+│   │   ├── master.py
 │   │   └── worker.py  (+)
 │   ├── zookeeper/
 │   │   ├── __init__.py
@@ -91,9 +91,7 @@ MapReduce-Implementation/
 │   ├── integration_tests/
 │   │   ├── __init__.py
 │   │   ├── test_hdfs_client.py
-│   │   ├── test_zookeeper_client.py (++)
-│   │   ├── test_master_hdfs.py (+)
-│   │   └── test_worker_zookeeper.py (+)
+│   │   └── test_zookeeper_client.py (++)
 │   ├── unit_tests/
 │   │   ├── __init__.py
 │   │   ├── test_worker.py  (+)

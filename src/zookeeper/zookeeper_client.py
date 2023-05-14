@@ -1,6 +1,7 @@
-from typing import NamedTuple
+from typing import NamedTuple, List
 import pickle
 from kazoo.client import KazooClient
+from kazoo.recipe.lock import Lock
 
 """
 /
@@ -10,41 +11,35 @@ from kazoo.client import KazooClient
 ├── masters/        (created by `user` `not ephemeral`)
 │   ├── <HOSTNAME>      (created by `master` on register `ephemeral`)
 │   ├── ...
-├── tasks/      (created by `user` `not ephemeral`)
-│   ├── <job_id>_<type>_<task_id>   (see down)
+├── jobs/
+│   ├── <HOSTNAME>  `master` hostname. (created by ?)
+├── map_tasks/      (created by `user` `not ephemeral`)
+│   ├── <job_id>_<task_id>   
+├── shuffle_tasks/      (created by `user` `not ephemeral`)
+│   ├── <job_id>   
+├── reduce_tasks/      (created by `user` `not ephemeral`)
+│   ├── <job_id>_<task_id1>_<task_id1>...     , For example: 1_20_30_32 job_id : 1 , task_ids: [20,30,32]
 ├── generators/  (created by `user` `not ephemeral`)
 │   ├── job_id_sequential
+├── locks/  (created by `user` `not ephemeral`)
+│   ├── get_workers_for_tasks_lock
 
-
-About `tasks`:
-<job_id>_<type>_<task_id>  :  `TaskInfo`. created by `master` and also modified by `master` (`worker_hostname`, 
-    `state` to 'in-progress' when `master` assigns a worker). The `worker` modifies `state` when job finishes.
 """
 
 
 class WorkerInfo(NamedTuple):
-    hostname: str
     state: str = 'idle'  # 'idle', 'in-task'
 
 
 class MasterInfo(NamedTuple):
-    hostname: str
+    state: str = 'nothing'
 
 
-class TaskInfo(NamedTuple):
+class Task(NamedTuple):
     """
-    Represents task information. The idea is that given `job_id`-`type`-`task_id` the worker
-    can run the task (using HDFS).
-
-    :param job_id: Unique job ID.
-    :param task_id: Task ID (unique for the `job`-`type` combination).
-    :param task_type: Task type ('map', 'shuffle', 'reduce').
     :param worker_hostname: Worker hostname that runs the task.
     :param state: Task state ('idle', 'in-progress', 'completed').
     """
-    job_id: int
-    task_id: int
-    task_type: str
     worker_hostname: str = None
     state: str = 'idle'
 
@@ -56,7 +51,7 @@ class ZookeeperClient:
 
     def setup_paths(self):
         """Creates the necessary directories in ZooKeeper."""
-        paths = ['/workers', '/masters', '/tasks', '/generators']
+        paths = ['/workers', '/masters', '/map_tasks', '/shuffle_tasks', '/reduce_tasks', '/generators', 'locks']
         for path in paths:
             self.zk.create(path)
 
@@ -66,7 +61,7 @@ class ZookeeperClient:
 
         :param worker_hostname: Hostname of the worker.
         """
-        worker_info = WorkerInfo(hostname=worker_hostname)
+        worker_info = WorkerInfo()
         serialized_worker_info = pickle.dumps(worker_info)
         # The `ephemeral` flag ensures that the z-node is automatically deleted if
         # the master disconnects
@@ -78,39 +73,52 @@ class ZookeeperClient:
 
         :param master_hostname: Hostname of the master.
         """
-        master_info = MasterInfo(hostname=master_hostname)
+        master_info = MasterInfo()
         serialized_master_info = pickle.dumps(master_info)
         # The `ephemeral` flag ensures that the z-node is automatically deleted if
         # the master disconnects
         self.zk.create(f'/masters/{master_hostname}', serialized_master_info, ephemeral=True)
 
-    def register_task(self, job_id, task_type, task_id):
+    def register_task(self, task_type, job_id, task_id=None):
         """
         Registers a task in ZooKeeper.
 
+        :param task_type: Task type ('map', 'reduce', 'shuffle').
         :param job_id: Unique job ID.
-        :param task_type: Task type ('map', 'shuffle', 'reduce').
-        :param task_id: Task ID.
+        :param task_id: Task ID (optional for 'map' and 'shuffle' tasks).
         """
-        task_info = TaskInfo(job_id=job_id, task_type=task_type, task_id=task_id)
-        serialized_task_info = pickle.dumps(task_info)
-        task_path = f'/tasks/{job_id}_{task_type}_{task_id}'
-        self.zk.create(task_path, serialized_task_info)
+        task = Task()
+        serialized_task = pickle.dumps(task)
 
-    def update_task(self, job_id, task_type, task_id, **kwargs):
+        if task_type == 'map':
+            self.zk.create(f'/map_tasks/{job_id}_{task_id}', serialized_task)
+        elif task_type == 'reduce':
+            suffix_id = '_'.join(map(str, task_id))
+            self.zk.create(f'/reduce_tasks/{job_id}_{suffix_id}', serialized_task)
+        else:
+            self.zk.create(f'/shuffle_tasks/{job_id}', serialized_task)
+
+    def update_task(self, task_type, job_id, task_id=None, **kwargs):
         """
         Updates task information in ZooKeeper.
 
+        :param task_type: Task type ('map', 'reduce', 'shuffle').
         :param job_id: Unique job ID.
-        :param task_type: Task type ('map', 'shuffle', 'reduce').
-        :param task_id: Task ID.
-        :param kwargs: Attributes to update in the task.
+        :param task_id: Task ID (optional for 'map' and 'shuffle' tasks).
+        :param kwargs: Additional attributes to update in the task.
         """
-        task_path = f'/tasks/{job_id}_{task_type}_{task_id}'
-        serialized_task_info, _ = self.zk.get(task_path)
-        task_info = pickle.loads(serialized_task_info)
-        updated_task_info = task_info._replace(**kwargs)
-        self.zk.set(task_path, pickle.dumps(updated_task_info))
+        if task_type == 'map':
+            task_path = f'/map_tasks/{job_id}_{task_id}'
+        elif task_type == 'reduce':
+            suffix_id = '_'.join(map(str, task_id))
+            task_path = f'/reduce_tasks/{job_id}_{suffix_id}'
+        else:
+            task_path = f'/shuffle_tasks/{job_id}'
+
+        serialized_task, _ = self.zk.get(task_path)
+        task = pickle.loads(serialized_task)
+        updated_task = task._replace(**kwargs)
+        self.zk.set(task_path, pickle.dumps(updated_task))
 
     def update_worker(self, worker_hostname, **kwargs):
         """
@@ -125,9 +133,51 @@ class ZookeeperClient:
         updated_worker_info = worker_info._replace(**kwargs)
         self.zk.set(worker_path, pickle.dumps(updated_worker_info))
 
-    def get_sequential_integer(self):
+    def get_workers_for_tasks(self, n):
         """
-        Gets a sequential integer from ZooKeeper.
+        Retrieves 'idle' workers, marks them as 'in-task', and returns their hostnames.
+
+        This method is protected by a distributed lock to ensure that only one client can
+        execute it at a time across the distributed system. This is necessary to avoid
+        race conditions that could occur when multiple clients try to assign tasks to workers
+        simultaneously.
+
+        The distributed lock is implemented with Zookeeper's Lock recipe, which provides
+        the guarantee of mutual exclusion even distributed system.
+
+        :param n: Maximum number of idle workers to retrieve.
+        :return: List of worker hostnames.
+        """
+        idle_workers = []
+
+        with self.zk.Lock("/locks/get_workers_for_tasks_lock"):
+
+            # Get the children (worker hostnames) under the workers path
+            children = self.zk.get_children('/workers')
+
+            # Iterate over the children to find 'idle' workers
+            for hostname in children:
+                worker_path = f'/workers/{hostname}'
+                serialized_worker_info, _ = self.zk.get(worker_path)
+                worker_info = pickle.loads(serialized_worker_info)
+
+                if worker_info.state == 'idle':
+                    # Update the worker state to 'in-task'
+                    self.update_worker(hostname, state='in-task')
+
+                    # Add the worker hostname to the list of idle workers
+                    idle_workers.append(hostname)
+
+                    if len(idle_workers) == n:
+                        # If the desired number of idle workers is reached, break the loop
+                        break
+
+        return idle_workers
+
+    def get_sequential_job_id(self):
+        """
+        Gets a sequential integer from ZooKeeper. ZooKeeper will ensure that the sequential IDs are unique and ordered
+        even when multiple application instances try to create IDs simultaneously.
 
         :returns: Sequential integer.
         """
@@ -139,10 +189,3 @@ class ZookeeperClient:
 
         # Convert the sequential number to an integer and return it
         return int(sequential_number)
-
-
-
-
-
-
-

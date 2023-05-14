@@ -2,13 +2,11 @@
     - `test_hdfs_client` singleton
     - `test_zookeeper_client` singleton
 
-4. Fix Worker everything
-    - Add shuffle task
-    - Save results into HDFS
-    - Save in Zookeeper
-
 5. worker-hdfs-zookeeper integration test.
 
 6. master complete the code, think thoroughly of the filesystem structure.
 
 7. close() HDFSCLIENT???s
+
+8. Master down ability. Not supported right now. Simple `JobInfo` with master `HOSTNAME`
+    suffices. Will think later :)
