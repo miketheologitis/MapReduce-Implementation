@@ -177,6 +177,10 @@ class ZookeeperClient:
 
         return idle_workers
 
+    def get(self, path):
+        serialized_data, _ = self.zk.get(path)
+        return pickle.loads(serialized_data)
+
     def get_sequential_job_id(self):
         """
         Gets a sequential integer from ZooKeeper. ZooKeeper will ensure that the sequential IDs are unique and ordered
@@ -188,7 +192,10 @@ class ZookeeperClient:
         sequential_path = self.zk.create('/generators/job_id_sequential', sequence=True)
 
         # Extract the sequential number from the z-node path
-        _, sequential_number = sequential_path.rsplit('/', 1)
+        _, sequential_filename = sequential_path.rsplit('/', 1)
+
+        # Remove the prefix "job_id_sequential" from the sequential number
+        sequential_number = sequential_filename.replace("job_id_sequential", "")
 
         # Convert the sequential number to an integer and return it
         return int(sequential_number)

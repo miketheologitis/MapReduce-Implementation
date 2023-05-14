@@ -1,13 +1,7 @@
 
 from flask import Flask, request
 import os
-import pickle
-import dill
-import base64
-from flask import send_file
-import io
 import time
-import requests
 from operator import itemgetter
 from itertools import groupby, chain
 from functools import reduce
@@ -20,10 +14,6 @@ from ..hadoop.hdfs_client import HdfsClient
 HOSTNAME = os.getenv('HOSTNAME', 'localhost')
 ZK_HOSTS = os.getenv('ZK_HOSTS', '127.0.0.1:2181')
 HDFS_HOST = os.getenv('HDFS_HOST', 'localhost:9870')
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MAP_DIR = os.path.join(BASE_DIR, "map_results")
-REDUCE_DIR = os.path.join(BASE_DIR, "reduce_results")
 
 app = Flask(__name__)
 
@@ -203,6 +193,11 @@ worker = Worker()
 @app.route('/map-task', methods=['POST'])
 def map_task():
     return worker.map_task()
+
+
+@app.route('/shuffle-task', methods=['POST'])
+def shuffle_task():
+    return worker.shuffle_task()
 
 
 @app.route('/reduce-task', methods=['POST'])
