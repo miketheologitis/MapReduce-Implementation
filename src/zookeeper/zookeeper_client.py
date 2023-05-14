@@ -28,6 +28,9 @@ from kazoo.recipe.lock import Lock
 
 
 class WorkerInfo(NamedTuple):
+    """
+    :param state: Task state ('idle', 'in-task').
+    """
     state: str = 'idle'  # 'idle', 'in-task'
 
 
