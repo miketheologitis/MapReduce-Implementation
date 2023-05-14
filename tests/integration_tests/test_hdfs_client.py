@@ -134,7 +134,7 @@ class TestHdfs(unittest.TestCase):
         # Check if 'jobs/' directory is empty
         listing = self.hdfs_client.hdfs.list('jobs/')
         self.assertEqual(len(listing), 0, "jobs/ directory should be empty")
-    """
+
     @classmethod
     def tearDownClass(cls) -> None:
         # Run `docker-compose down`
@@ -143,7 +143,6 @@ class TestHdfs(unittest.TestCase):
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
         )
-    """
 
 
 if __name__ == '__main__':

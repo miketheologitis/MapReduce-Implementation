@@ -105,5 +105,4 @@ MapReduce-Implementation/
 ├── TODO.txt
 ├── docker-compose.yaml
 ├── hadoop.env
-└── main.py
 ```

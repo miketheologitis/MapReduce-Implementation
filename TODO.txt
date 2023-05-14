@@ -10,3 +10,5 @@
 5. worker-hdfs-zookeeper integration test.
 
 6. master complete the code, think thoroughly of the filesystem structure.
+
+7. close() HDFSCLIENT???s

@@ -17,12 +17,12 @@ user='mapreduce'
 │    │      │       ├── <task_id>.pickle  (from `worker`)
 │    │      │       ├── ...
 │    │      ├── shuffle_results/  (from `user`)
-│    │      │       ├── 1.pickle  (from `worker`)   (key, values) tuple
-│    │      │       ├── 2.pickle  (from `worker`)
+│    │      │       ├── 0.pickle  (from `worker`)   (key, values) tuple
+│    │      │       ├── 1.pickle  (from `worker`)
 │    │      │       ├── ...
 │    │      ├── reduce_results/ (from `user`)
-│    │      │       ├── 1.pickle  (from `worker`)   | OR  1_2.pickle if the `worker` gets two shuffle
-│    │      │       ├── 2.pickle  (from `worker`)   |                input files
+│    │      │       ├── 0.pickle  (from `worker`)   | OR  1_2.pickle if the `worker` gets two shuffle
+│    │      │       ├── 1.pickle  (from `worker`)   |                input files
 │    │      │       ├── ...
 │    ├── ...
 """
@@ -93,5 +93,7 @@ class HdfsClient:
             serialized_func = reader.read()
         func = dill.loads(serialized_func)
         return func
+
+
 
 
