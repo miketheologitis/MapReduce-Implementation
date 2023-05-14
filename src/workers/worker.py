@@ -72,6 +72,7 @@ class Worker:
         job_id, task_id = req_data['job_id'], req_data['task_id']
 
         hdfs_client = self.get_hdfs_client()
+        zk_client = self.get_zk_client()
 
         # Retrieve the data/func for this task from HDFS (using `job_id` and `task_id`)
         data = hdfs_client.get_data(f'jobs/job_{job_id}/map_tasks/{task_id}.pickle')
@@ -82,6 +83,10 @@ class Worker:
 
         # Save the results to HDFS (using `job_id` and `task_id`)
         hdfs_client.save_data(f'jobs/job_{job_id}/map_results/{task_id}.pickle', output_data)
+
+        # Update state of this worker and task in Zookeeper
+        zk_client.update_worker(HOSTNAME, state='idle')
+        zk_client.update_task('map', job_id=job_id, task_id=task_id, state='complete')
 
         # Return OK
         return '', 200
@@ -121,6 +126,7 @@ class Worker:
         job_id = request.get_json()['job_id']
 
         hdfs_client = self.get_hdfs_client()
+        zk_client = self.get_zk_client()
 
         # Retrieve data from map_results directory
         data = []
@@ -130,6 +136,10 @@ class Worker:
         # Perform shuffling and save the results
         for i, key_values_tuple in enumerate(shuffle_generator(data)):
             hdfs_client.save_data(f'jobs/job_{job_id}/shuffle_results/{i}.pickle', key_values_tuple)
+
+        # Update state of this worker and task in Zookeeper
+        zk_client.update_worker(HOSTNAME, state='idle')
+        zk_client.update_task('shuffle', job_id=job_id, state='complete')
 
         # Return OK
         return '', 200
@@ -153,6 +163,7 @@ class Worker:
         job_id, task_ids = req_data['job_id'], req_data['task_ids']
 
         hdfs_client = self.get_hdfs_client()
+        zk_client = self.get_zk_client()
 
         data = []
         for task_id in task_ids:
@@ -173,6 +184,10 @@ class Worker:
 
         # Save the reduce results with the corresponding prefix
         hdfs_client.save_data(f'jobs/job_{job_id}/reduce_results/{prefix}.pickle', reduce_results)
+
+        # Update state of this worker and task in Zookeeper
+        zk_client.update_worker(HOSTNAME, state='idle')
+        zk_client.update_task('reduce', job_id=job_id, task_id=task_ids, state='complete')
 
         return '', 200
 
