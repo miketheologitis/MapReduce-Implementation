@@ -1,7 +1,3 @@
-2. Create singleton tests of the methods
-    - `test_hdfs_client` singleton
-    - `test_zookeeper_client` singleton
-
 5. worker-hdfs-zookeeper integration test.
 
 6. master complete the code, think thoroughly of the filesystem structure.
