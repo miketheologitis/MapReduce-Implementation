@@ -1,8 +1,6 @@
-5. worker-hdfs-zookeeper integration test.
+3. fix test_worker
 
-6. master complete the code, think thoroughly of the filesystem structure.
-
-7. close() HDFSCLIENT???s
+4. complete master
 
 8. Master down ability. Not supported right now. Simple `JobInfo` with master `HOSTNAME`
     suffices. Will think later :)
