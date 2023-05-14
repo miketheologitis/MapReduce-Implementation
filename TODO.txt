@@ -1,6 +1,5 @@
-3. fix test_worker
 
-4. complete master
+4-5. complete master, create MapReduceContext
 
 8. Master down ability. Not supported right now. Simple `JobInfo` with master `HOSTNAME`
     suffices. Will think later :)

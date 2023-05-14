@@ -25,8 +25,8 @@ docker-compose up -d --scale master=1 --scale worker=1 --no-recreate
 
 ```bash
 python -m unittest tests.unit_tests.test_worker
-python -m unittest tests.unit_tests.test_master
-python -m unittest tests.integration_tests.test_worker_zookeeper_integration
+python -m unittest tests.integration_tests.test_hdfs_client
+python -m unittest tests.integration_tests.test_zookeeper_client
 ```
 
 ```bash
@@ -78,8 +78,8 @@ MapReduce-Implementation/
 │   ├── __init__.py
 │   ├── workers/
 │   │   ├── __init__.py
-│   │   ├── master.py
-│   │   └── worker.py  (+)
+│   │   ├── master.py (+)
+│   │   └── worker.py
 │   ├── zookeeper/
 │   │   ├── __init__.py
 │   │   └── zookeeper_client.py
@@ -91,10 +91,10 @@ MapReduce-Implementation/
 │   ├── integration_tests/
 │   │   ├── __init__.py
 │   │   ├── test_hdfs_client.py
-│   │   └── test_zookeeper_client.py (++)
+│   │   └── test_zookeeper_client.py
 │   ├── unit_tests/
 │   │   ├── __init__.py
-│   │   ├── test_worker.py  (+)
+│   │   ├── test_worker.py
 │   │   └── test_master.py (+)
 ├── README.md
 ├── requirements.txt
