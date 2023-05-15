@@ -6,8 +6,8 @@ from ..zookeeper.zookeeper_client import ZookeeperClient
 
 class LocalMonitoring:
 
-    def __init__(self):
-        self.zk_hosts = "127.0.0.1:2181,127.0.0.1:2182,127.0.0.1:2183"
+    def __init__(self, zk_hosts):
+        self.zk_hosts = zk_hosts
 
         self.zk_client = None
 
@@ -77,6 +77,7 @@ class LocalMonitoring:
             # Setting the event will unblock the wait_for_job_completion function.
             if job.state == 'completed':
                 event.set()
+                return False  # stop further calls https://kazoo.readthedocs.io/_/downloads/en/2.2/pdf/ page:43
 
         # Wait until the job is completed.
         # This is done by entering a loop that continues until the event is set.

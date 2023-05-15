@@ -11,7 +11,7 @@ class LocalCluster:
         self.zk_hosts = "localhost:2181,localhost:2182,localhost:2183"
         self.hdfs_host = "localhost:9870"  # namenode
 
-        self.local_monitoring = LocalMonitoring()
+        self.local_monitoring = LocalMonitoring(self.zk_hosts)
 
         self.zk_client, self.hdfs_client = None, None
 
@@ -20,7 +20,7 @@ class LocalCluster:
 
         self.scale(n_workers, n_masters, verbose=verbose)
 
-    def get_zk_client(self, with_init=False):
+    def get_zk_client(self):
         if self.zk_client is None:
             self.zk_client = ZookeeperClient(self.zk_hosts)
         return self.zk_client
@@ -30,26 +30,9 @@ class LocalCluster:
             self.hdfs_client = HdfsClient(self.hdfs_host)
         return self.hdfs_client
 
-    def cluster_initialize(self, verbose=False):
-        """
-        Initialize the local cluster by starting necessary services and creating directories in ZooKeeper
-        and HDFS.
-
-        :param verbose: Whether to print verbose output.
-        """
-        subprocess.run(
-            ['docker-compose', 'up', '-d', '--scale', 'worker=0',
-             '--scale', 'master=0', '--no-recreate'],
-            stdout=subprocess.DEVNULL if not verbose else None,
-            stderr=subprocess.DEVNULL if not verbose else None
-        )
-
-        _ = self.get_hdfs_client()
-        self.get_zk_client().setup_paths()
-
     def mapreduce(self, data, map_func, reduce_func):
         """
-        Perform MapReduce on the local cluster.
+        Perform MapReduce on the local cluster. Blocks until completion.
 
         :param data: Input data for MapReduce.
         :param map_func: Map function.
@@ -88,6 +71,23 @@ class LocalCluster:
             stdout=subprocess.DEVNULL if not verbose else None,
             stderr=subprocess.DEVNULL if not verbose else None
         )
+
+    def cluster_initialize(self, verbose=False):
+        """
+        Initialize the local cluster by starting necessary services and creating directories in ZooKeeper
+        and HDFS.
+
+        :param verbose: Whether to print verbose output.
+        """
+        subprocess.run(
+            ['docker-compose', 'up', '-d', '--scale', 'worker=0',
+             '--scale', 'master=0', '--no-recreate'],
+            stdout=subprocess.DEVNULL if not verbose else None,
+            stderr=subprocess.DEVNULL if not verbose else None
+        )
+
+        _ = self.get_hdfs_client()
+        self.get_zk_client().setup_paths()
 
     def shutdown_cluster(self, verbose=False):
         """
