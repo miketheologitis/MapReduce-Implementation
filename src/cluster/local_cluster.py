@@ -81,7 +81,8 @@ class LocalCluster:
         job_id = zk_client.get_sequential_job_id()
         hdfs_client.job_create(job_id=job_id, data=data, map_func=map_func, reduce_func=reduce_func)
 
-        # TODO: Job create in zookeeper ?
+        # TODO: Wait for job completion. Job completion is when the `corresponding` Job z-node is 'complete'
+
 
     def scale(self, n_workers=None, n_masters=None, verbose=False):
         """

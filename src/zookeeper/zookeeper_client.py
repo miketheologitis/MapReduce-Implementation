@@ -156,6 +156,22 @@ class ZookeeperClient:
         self.zk.set(worker_path, pickle.dumps(updated_worker_info))
 
     def update_job(self, job_id, **kwargs):
+        """
+        Updates job information in ZooKeeper.
+
+        This method is used to modify the state and master_hostname of a job in ZooKeeper.
+        For 'idle' jobs, it is expected to be called under a distributed lock, i.e.,
+        `with self.zk.Lock("/locks/master_job_assignment_lock")`. This is to prevent
+        race conditions when multiple masters try to update the same 'idle' job simultaneously.
+
+        For 'in-progress' jobs, only the assigned master will ever modify it again (to mark it as 'completed').
+        Therefore, it is not necessary to acquire a lock in such cases as there is no risk of concurrent modification.
+
+        :param job_id: The unique job id
+        :param kwargs: Additional attributes to update in the job.
+                       This can include 'state' (to mark the job as 'in-progress' or 'completed')
+                       and 'master_hostname' (to assign or reassign the job to a master).
+        """
         job_path = f'/jobs/{job_id}'
         job_info = self.get(job_path)
         updated_job_info = job_info._replace(**kwargs)
