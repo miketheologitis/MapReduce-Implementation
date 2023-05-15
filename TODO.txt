@@ -1,9 +1,9 @@
+1. complete master
 
-Comments `zookeeper_client.py` `get_job` `register_task`
-Comments `local_cluster.py`
-Comments `local_monitoring.py`
+2. general integration test.
 
-4-5. complete master, create MapReduceContext
+4. worker down?
 
-8. Master down ability. Not supported right now. Simple `JobInfo` with master `HOSTNAME`
-    suffices. Will think later :)
+5. master down?
+
+6. beautiful progress in #TODO: `local_monitoring`
