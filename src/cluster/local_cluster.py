@@ -7,8 +7,8 @@ from ..monitoring.local_monitoring import LocalMonitoring
 
 
 class LocalCluster:
-    def __init__(self, n_workers=None, n_masters=None, initialize=True):
-        self.zk_hosts = "127.0.0.1:2181,127.0.0.1:2182,127.0.0.1:2183"
+    def __init__(self, n_workers=None, n_masters=None, initialize=False, verbose=False):
+        self.zk_hosts = "localhost:2181,localhost:2182,localhost:2183"
         self.hdfs_host = "localhost:9870"  # namenode
 
         self.local_monitoring = LocalMonitoring()
@@ -16,35 +16,18 @@ class LocalCluster:
         self.zk_client, self.hdfs_client = None, None
 
         if initialize:
-            self.cluster_initialize()
+            self.cluster_initialize(verbose=verbose)
 
-        self.scale(n_workers, n_masters)
+        self.scale(n_workers, n_masters, verbose=verbose)
 
-    def get_zk_client(self, retries=10, sleep_sec=5):
+    def get_zk_client(self, with_init=False):
         if self.zk_client is None:
-            for i in range(retries):
-                try:
-                    self.zk_client = ZookeeperClient(self.zk_hosts)
-                except Exception as e:
-                    if i < retries - 1:
-                        time.sleep(sleep_sec)
-                        continue
-                    else:  # raise exception if this was the last retry
-                        raise Exception("Could not connect to Zookeeper after multiple attempts") from e
+            self.zk_client = ZookeeperClient(self.zk_hosts)
         return self.zk_client
 
-    def get_hdfs_client(self, retries=10, sleep_sec=5):
+    def get_hdfs_client(self, retries=15, sleep_sec=10, with_init=False):
         if self.hdfs_client is None:
-            for i in range(retries):
-                try:
-                    self.hdfs_client = HdfsClient(self.hdfs_host)
-                    self.hdfs_client.hdfs.status('')  # Raises exception
-                except Exception as e:
-                    if i < retries - 1:
-                        time.sleep(sleep_sec)
-                        continue
-                    else:  # raise exception if this was the last retry
-                        raise Exception("Could not connect to Zookeeper after multiple attempts") from e
+            self.hdfs_client = HdfsClient(self.hdfs_host)
         return self.hdfs_client
 
     def cluster_initialize(self, verbose=False):
@@ -56,16 +39,13 @@ class LocalCluster:
         """
         subprocess.run(
             ['docker-compose', 'up', '-d', '--scale', 'worker=0',
-             '--scale', 'master=0', '--scale'],
+             '--scale', 'master=0', '--no-recreate'],
             stdout=subprocess.DEVNULL if not verbose else None,
             stderr=subprocess.DEVNULL if not verbose else None
         )
 
-        zk_client = self.get_zk_client()
-        zk_client.setup_paths()
-
-        hdfs_client = self.get_hdfs_client()
-        hdfs_client.initialize_job_dir()
+        _ = self.get_hdfs_client()
+        self.get_zk_client().setup_paths()
 
     def mapreduce(self, data, map_func, reduce_func):
         """
@@ -76,13 +56,18 @@ class LocalCluster:
         :param reduce_func: Reduce function.
         """
         hdfs_client = self.get_hdfs_client()
-        zk_client = self.zk_client()
+        zk_client = self.get_zk_client()
 
         job_id = zk_client.get_sequential_job_id()
         hdfs_client.job_create(job_id=job_id, data=data, map_func=map_func, reduce_func=reduce_func)
 
-        # TODO: Wait for job completion. Job completion is when the `corresponding` Job z-node is 'complete'
+        self.local_monitoring.wait_for_job_completion(job_id)
 
+        output_data = []
+        for filename in hdfs_client.hdfs.list(f'jobs/job_{job_id}/reduce_results/'):
+            output_data.extend(hdfs_client.get_data(f'jobs/job_{job_id}/reduce_results/{filename}'))
+
+        return output_data
 
     def scale(self, n_workers=None, n_masters=None, verbose=False):
         """
@@ -111,14 +96,14 @@ class LocalCluster:
         :param verbose: Whether to print verbose output.
         """
         zk_client = self.get_zk_client()
-        zk_client.stop()
-        zk_client.close()
+        zk_client.zk.stop()
+        zk_client.zk.close()
 
         hdfs_client = self.get_hdfs_client()
         hdfs_client.cleanup()
 
         subprocess.run(
-            ['docker-compose', 'down', '-d'],
+            ['docker-compose', 'down'],
             stdout=subprocess.DEVNULL if not verbose else None,
             stderr=subprocess.DEVNULL if not verbose else None
         )

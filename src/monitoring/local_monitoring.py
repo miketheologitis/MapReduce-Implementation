@@ -11,17 +11,9 @@ class LocalMonitoring:
 
         self.zk_client = None
 
-    def get_zk_client(self, retries=10, sleep_sec=5):
+    def get_zk_client(self):
         if self.zk_client is None:
-            for i in range(retries):
-                try:
-                    self.zk_client = ZookeeperClient(self.zk_hosts)
-                except Exception as e:
-                    if i < retries - 1:
-                        time.sleep(sleep_sec)
-                        continue
-                    else:  # raise exception if this was the last retry
-                        raise Exception("Could not connect to Zookeeper after multiple attempts") from e
+            self.zk_client = ZookeeperClient(self.zk_hosts)
         return self.zk_client
 
     def get_registered_masters(self):
@@ -91,4 +83,5 @@ class LocalMonitoring:
         # In each iteration of the loop, the thread is blocked for 1 second or until the event is set,
         # whichever happens first.
         while not event.is_set():
+            # TODO: print beautiful info
             event.wait(1)

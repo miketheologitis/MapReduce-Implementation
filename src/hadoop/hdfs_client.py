@@ -1,5 +1,6 @@
 import pickle
 import dill
+import time
 from hdfs import InsecureClient
 
 """
@@ -25,6 +26,10 @@ user='mapreduce'
 │    │      │       ├── 1.pickle  (from `worker`)   |                input files
 │    │      │       ├── ...
 │    ├── ...
+
+map_results -> <task_id>.pickle [(k, v), ...]
+shuffle_results -> 0.pickle (k,values)
+reduce_results -> 0.pickle [(k,v), ...]
 """
 
 
@@ -32,6 +37,19 @@ class HdfsClient:
 
     def __init__(self, host):
         self.hdfs = InsecureClient(f'http://{host}', user='mapreduce')
+        self.check_start_with_retries()
+
+    def check_start_with_retries(self, max_retries=15, retry_delay=10):
+        for i in range(max_retries):
+            try:
+                self.hdfs.list('')
+                self.initialize_jobs_dir()
+            except Exception as e:
+                if i < max_retries - 1:
+                    time.sleep(retry_delay)
+                    continue
+                else:  # raise exception if this was the last retry
+                    raise Exception("Could not connect to HDFS after multiple attempts") from e
 
     def initialize_jobs_dir(self):
         self.hdfs.makedirs('jobs/')

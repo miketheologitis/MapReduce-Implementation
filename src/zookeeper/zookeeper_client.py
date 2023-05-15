@@ -1,6 +1,15 @@
 from typing import NamedTuple
 import pickle
+import logging
+import time
 from kazoo.client import KazooClient
+
+# Get the logger for Kazoo
+kazoo_logger = logging.getLogger('kazoo.client')
+
+# Set the log level for this logger to ERROR
+# This means that WARNING messages will be ignored
+kazoo_logger.setLevel(logging.ERROR)
 
 """
 /
@@ -58,7 +67,18 @@ class Task(NamedTuple):
 class ZookeeperClient:
     def __init__(self, hosts):
         self.zk = KazooClient(hosts=hosts)
-        self.zk.start()
+        self.start_with_retries()
+
+    def start_with_retries(self, max_retries=15, retry_delay=10):
+        for i in range(max_retries):
+            try:
+                self.zk.start()
+            except Exception as e:
+                if i < max_retries - 1:
+                    time.sleep(retry_delay)
+                    continue
+                else:  # raise exception if this was the last retry
+                    raise Exception("Could not connect to Zookeeper after multiple attempts") from e
 
     def setup_paths(self):
         """Creates the necessary directories in ZooKeeper."""

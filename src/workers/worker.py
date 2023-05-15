@@ -23,31 +23,14 @@ class Worker:
         self.zk_client = None
         self.hdfs_client = None
 
-    def get_zk_client(self, retries=10, sleep_sec=5):
+    def get_zk_client(self):
         if self.zk_client is None:
-            for i in range(retries):
-                try:
-                    self.zk_client = ZookeeperClient(ZK_HOSTS)
-                except Exception as e:
-                    if i < retries - 1:
-                        time.sleep(sleep_sec)
-                        continue
-                    else:  # raise exception if this was the last retry
-                        raise Exception("Could not connect to Zookeeper after multiple attempts") from e
+            self.zk_client = ZookeeperClient(ZK_HOSTS)
         return self.zk_client
 
-    def get_hdfs_client(self, retries=10, sleep_sec=5):
+    def get_hdfs_client(self):
         if self.hdfs_client is None:
-            for i in range(retries):
-                try:
-                    self.hdfs_client = HdfsClient(HDFS_HOST)
-                    self.hdfs_client.hdfs.status('')  # Raises exception
-                except Exception as e:
-                    if i < retries - 1:
-                        time.sleep(sleep_sec)
-                        continue
-                    else:  # raise exception if this was the last retry
-                        raise Exception("Could not connect to Zookeeper after multiple attempts") from e
+            self.hdfs_client = HdfsClient(HDFS_HOST)
         return self.hdfs_client
 
     def map_task(self):

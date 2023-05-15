@@ -27,6 +27,7 @@ docker-compose up -d --scale master=1 --scale worker=1 --no-recreate
 python -m unittest tests.unit_tests.test_worker
 python -m unittest tests.integration_tests.test_hdfs_client
 python -m unittest tests.integration_tests.test_zookeeper_client
+python -m unittest tests.integration_tests.test_local_cluster_local_monitoring
 ```
 
 ```bash
@@ -76,6 +77,12 @@ hdfs.status('/')
 MapReduce-Implementation/
 ├── src/
 │   ├── __init__.py
+│   ├── cluster/
+│   │   ├── __init__.py
+│   │   └── local_cluster.py
+│   ├── monitoring/
+│   │   ├── __init__.py
+│   │   └── local_monitoring.py
 │   ├── workers/
 │   │   ├── __init__.py
 │   │   ├── master.py (+)
@@ -91,7 +98,8 @@ MapReduce-Implementation/
 │   ├── integration_tests/
 │   │   ├── __init__.py
 │   │   ├── test_hdfs_client.py
-│   │   └── test_zookeeper_client.py
+│   │   ├── test_zookeeper_client.py
+│   │   └── pytest_local_cluster_local_monitoring.py
 │   ├── unit_tests/
 │   │   ├── __init__.py
 │   │   ├── test_worker.py

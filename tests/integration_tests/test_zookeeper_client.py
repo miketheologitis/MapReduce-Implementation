@@ -17,18 +17,7 @@ class TestZookeeper(unittest.TestCase):
             stderr=subprocess.DEVNULL
         )
 
-        # This was needed because even though the docker-compose ends, containers
-        # need some more time to be reachable
-        time.sleep(15)
-
-        tries = 5
-        for _ in range(tries):
-            try:
-                cls.zk_client = ZookeeperClient("127.0.0.1:2181")
-                break
-            except Exception as e:
-                time.sleep(5)
-                continue
+        cls.zk_client = ZookeeperClient("127.0.0.1:2181")
 
         cls.zk_client.setup_paths()
 

@@ -20,21 +20,8 @@ class TestHdfs(unittest.TestCase):
             stderr=subprocess.DEVNULL
         )
 
-        # This was needed because even though the docker-compose ends, containers
-        # need some more time to be reachable
-        time.sleep(15)
-
         cls.hdfs_client = HdfsClient("localhost:9870")
 
-        tries = 5
-        for _ in range(tries):
-            try:
-                cls.hdfs_client = HdfsClient("localhost:9870")
-                cls.hdfs_client.initialize_jobs_dir()
-                break
-            except Exception as e:
-                time.sleep(5)
-                continue
 
     def test_job_create_dirs(self):
         for i in range(10):
