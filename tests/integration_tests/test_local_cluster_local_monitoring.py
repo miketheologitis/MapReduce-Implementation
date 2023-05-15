@@ -65,7 +65,6 @@ class LocalClusterTests(unittest.TestCase):
         self.assertFalse(complete_thread.is_alive())
         self.assertFalse(in_progress_thread.is_alive())
 
-    @unittest.skip('dsadsa')
     def test_scale(self):
         self.clu.scale(n_workers=2)
         self._check_workers_master(n_workers=2, n_masters=0)
@@ -101,9 +100,9 @@ class LocalClusterTests(unittest.TestCase):
     def tearDownClass(cls) -> None:
         zk_client1 = cls.clu.local_monitoring.get_zk_client()
         zk_client2 = cls.clu.get_zk_client()
-        #zk_client1.zk.stop()
-        #zk_client1.zk.close()
-        #zk_client2.zk.stop()
-        #zk_client2.zk.close()
+        zk_client1.zk.stop()
+        zk_client1.zk.close()
+        zk_client2.zk.stop()
+        zk_client2.zk.close()
         cls.clu.shutdown_cluster(verbose=False)
 
