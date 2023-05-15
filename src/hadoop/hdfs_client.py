@@ -33,20 +33,28 @@ class HdfsClient:
     def __init__(self, host):
         self.hdfs = InsecureClient(f'http://{host}', user='mapreduce')
 
-    def initialize_job_dir(self):
+    def initialize_jobs_dir(self):
         self.hdfs.makedirs('jobs/')
 
-    def job_create_dirs(self, job_id):
+    def job_create(self, job_id, data, map_func, reduce_func):
         """
         Create directories for a job in HDFS.
 
         :param job_id: The unique id of the job.
+        :param data: The initial data
+        :param map_func: The map func
+        :param reduce_func: The reduce func
         """
+
         self.hdfs.makedirs(f'jobs/job_{job_id}/map_tasks/')
         self.hdfs.makedirs(f'jobs/job_{job_id}/reduce_tasks/')
         self.hdfs.makedirs(f'jobs/job_{job_id}/map_results/')
         self.hdfs.makedirs(f'jobs/job_{job_id}/shuffle_results/')
         self.hdfs.makedirs(f'jobs/job_{job_id}/reduce_results/')
+
+        self.save_data(f'jobs/job_{job_id}/data.pickle', data)
+        self.save_func(f'jobs/job_{job_id}/map_func.pickle', map_func)
+        self.save_func(f'jobs/job_{job_id}/reduce_func.pickle', reduce_func)
 
     def save_data(self, hdfs_path, data):
         """
@@ -93,6 +101,10 @@ class HdfsClient:
             serialized_func = reader.read()
         func = dill.loads(serialized_func)
         return func
+
+    def cleanup(self):
+        """ Delete `jobs` directory completely with everything inside """
+        self.hdfs.delete('jobs', recursive=True)
 
 
 

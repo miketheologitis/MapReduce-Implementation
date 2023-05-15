@@ -1,4 +1,8 @@
 
+Comments `zookeeper_client.py` `get_job` `register_task`
+Comments `local_cluster.py`
+Comments `local_monitoring.py`
+
 4-5. complete master, create MapReduceContext
 
 8. Master down ability. Not supported right now. Simple `JobInfo` with master `HOSTNAME`

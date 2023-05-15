@@ -30,7 +30,7 @@ class TestHdfs(unittest.TestCase):
         for _ in range(tries):
             try:
                 cls.hdfs_client = HdfsClient("localhost:9870")
-                cls.hdfs_client.initialize_job_dir()
+                cls.hdfs_client.initialize_jobs_dir()
                 break
             except Exception as e:
                 time.sleep(5)
@@ -38,16 +38,15 @@ class TestHdfs(unittest.TestCase):
 
     def test_job_create_dirs(self):
         for i in range(10):
-            self.hdfs_client.job_create_dirs(job_id=i)
-            self._test_job_create_dirs(job_id=i)
+            self.hdfs_client.job_create(job_id=i, data=[1, 23], map_func=lambda x: x, reduce_func=lambda x: x)
+            self._test_job_create(job_id=i)
 
         self._test_cleanup_jobs_dir()
 
     def test_save_retrieve_data(self):
         data = [("mike1",), ("george",), ("1g2eommrg3",)]
 
-        self.hdfs_client.job_create_dirs(job_id=50)
-        self.hdfs_client.save_data('jobs/job_50/data.pickle', data)
+        self.hdfs_client.job_create(job_id=50, data=data, map_func=lambda x: x, reduce_func=lambda x: x)
 
         retrieved_data = self.hdfs_client.get_data('jobs/job_50/data.pickle')
 
@@ -55,10 +54,8 @@ class TestHdfs(unittest.TestCase):
 
         self._test_cleanup_jobs_dir()
 
-    #@unittest.skip('skip')
     def test_perform_job(self):
         job_id = 106
-        self.hdfs_client.job_create_dirs(job_id=job_id)
 
         data = [("mike1",), ("george",), ("1g2eommrg3",)]
         map_func = lambda x: map(lambda letter: (letter, 1), x)  # [('m', 1), ('i', 1), ...]
@@ -66,9 +63,7 @@ class TestHdfs(unittest.TestCase):
 
         # 1. Save to HDFS the MapReduce `data`, `map_func`, `reduce_func`
 
-        self.hdfs_client.save_data(f'jobs/job_{job_id}/data.pickle', data)
-        self.hdfs_client.save_func(f'jobs/job_{job_id}/map_func.pickle', map_func)
-        self.hdfs_client.save_func(f'jobs/job_{job_id}/reduce_func.pickle', reduce_func)
+        self.hdfs_client.job_create(job_id=job_id, data=data, map_func=map_func, reduce_func=reduce_func)
 
         # 2. (we skip the data split part from `master`) The `worker` comes and gets the (split) data
         #    from HDFS along with the `map_func`
@@ -119,13 +114,16 @@ class TestHdfs(unittest.TestCase):
 
         self._test_cleanup_jobs_dir()
 
-    def _test_job_create_dirs(self, job_id):
+    def _test_job_create(self, job_id):
         # Assert that the directories were created in HDFS
         self.assertTrue(self.hdfs_client.hdfs.status(f"jobs/job_{job_id}/map_tasks"))
         self.assertTrue(self.hdfs_client.hdfs.status(f"jobs/job_{job_id}/reduce_tasks"))
         self.assertTrue(self.hdfs_client.hdfs.status(f"jobs/job_{job_id}/map_results"))
         self.assertTrue(self.hdfs_client.hdfs.status(f"jobs/job_{job_id}/shuffle_results"))
         self.assertTrue(self.hdfs_client.hdfs.status(f"jobs/job_{job_id}/reduce_results"))
+        self.assertTrue(self.hdfs_client.hdfs.status(f"jobs/job_{job_id}/map_func.pickle"))
+        self.assertTrue(self.hdfs_client.hdfs.status(f"jobs/job_{job_id}/reduce_func.pickle"))
+        self.assertTrue(self.hdfs_client.hdfs.status(f"jobs/job_{job_id}/data.pickle"))
 
     def _test_cleanup_jobs_dir(self):
         listing = self.hdfs_client.hdfs.list('jobs/')

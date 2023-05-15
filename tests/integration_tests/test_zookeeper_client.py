@@ -41,10 +41,38 @@ class TestZookeeper(unittest.TestCase):
 
         expected_children = [
             'workers', 'masters', 'map_tasks', 'locks',
-            'shuffle_tasks', 'reduce_tasks', 'generators', 'zookeeper'
+            'shuffle_tasks', 'reduce_tasks', 'generators', 'zookeeper', 'jobs'
         ]
 
         self.assertCountEqual(children, expected_children)
+
+    def test_job_ops(self):
+        """Test case to perform job operations in ZooKeeper and verify their correctness."""
+        job_ids = []
+
+        # Generate job IDs and register jobs in ZooKeeper
+        for _ in range(100):
+            job_id = self.zk_client.get_sequential_job_id()
+            self.assertIsInstance(job_id, int)
+            self.zk_client.register_job(job_id)
+            job_ids.append(job_id)
+
+        assigned_jobs = []
+
+        # Assign jobs to masters and verify job state and assigned master
+        for _ in range(10):
+            assigned_job_id = self.zk_client.get_job('master1')
+            assigned_jobs.append(assigned_job_id)
+
+        # Verify the state and assigned master of each job
+        for job_id in job_ids:
+            job = self.zk_client.get(f'jobs/{job_id}')
+            if job_id not in assigned_jobs:
+                self.assertTrue(job.state == 'idle')
+                self.assertIsNone(job.master_hostname)
+            else:
+                self.assertTrue(job.state == 'in-progress')
+                self.assertTrue(job.master_hostname == 'master1')
 
     def test_register_worker(self):
         """Test case to register workers in ZooKeeper and verify their registration."""
