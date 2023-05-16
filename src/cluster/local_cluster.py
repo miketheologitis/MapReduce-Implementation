@@ -1,4 +1,3 @@
-import time
 import subprocess
 
 from ..hadoop.hdfs_client import HdfsClient
@@ -25,24 +24,27 @@ class LocalCluster:
             self.zk_client = ZookeeperClient(self.zk_hosts)
         return self.zk_client
 
-    def get_hdfs_client(self, retries=15, sleep_sec=10, with_init=False):
+    def get_hdfs_client(self):
         if self.hdfs_client is None:
             self.hdfs_client = HdfsClient(self.hdfs_host)
         return self.hdfs_client
 
-    def mapreduce(self, data, map_func, reduce_func):
+    def mapreduce(self, data, map_func, reduce_func, requested_n_workers=None):
         """
         Perform MapReduce on the local cluster. Blocks until completion.
 
         :param data: Input data for MapReduce.
         :param map_func: Map function.
         :param reduce_func: Reduce function.
+        :param requested_n_workers: The number of workers requested for this job (`None` means all available)
         """
         hdfs_client = self.get_hdfs_client()
         zk_client = self.get_zk_client()
 
         job_id = zk_client.get_sequential_job_id()
+
         hdfs_client.job_create(job_id=job_id, data=data, map_func=map_func, reduce_func=reduce_func)
+        zk_client.register_job(job_id=job_id, requested_n_workers=requested_n_workers)
 
         self.local_monitoring.wait_for_job_completion(job_id)
 
@@ -60,6 +62,8 @@ class LocalCluster:
         :param n_masters: Number of masters. If not provided, the current number of registered masters will be used.
         :param verbose: Whether to print verbose output.
         """
+
+        # This to make sure we do not delete workers. --scale with the same number as live, does not recreate
         if not n_workers:
             _, n_workers = self.local_monitoring.get_registered_workers()
         if not n_masters:
@@ -107,7 +111,3 @@ class LocalCluster:
             stdout=subprocess.DEVNULL if not verbose else None,
             stderr=subprocess.DEVNULL if not verbose else None
         )
-
-
-
-
