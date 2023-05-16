@@ -28,6 +28,7 @@ python -m unittest tests.unit_tests.test_worker
 python -m unittest tests.integration_tests.test_hdfs_client
 python -m unittest tests.integration_tests.test_zookeeper_client
 python -m unittest tests.integration_tests.test_local_cluster_local_monitoring
+python -m unittest tests.integration_tests.test_local_cluster
 ```
 
 ```bash
@@ -95,6 +96,9 @@ MapReduce-Implementation/
 │   │   ├── __init__.py
 │   │   ├── test_worker.py
 │   │   └── test_master.py (+)
+├── examples/
+│   ├── __init__.py
+│   ├── testing.ipynb
 ├── README.md
 ├── requirements.txt
 ├── Dockerfile.worker

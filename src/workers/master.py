@@ -68,8 +68,7 @@ class Master:
         with this number of workers (even if only 1 worker is available for example). When no workers
         are available, we wait until at least a single worker is available.
 
-         """
-
+        """
         zk_client = self.get_zk_client()
         hdfs_client = self.get_hdfs_client()
 
@@ -82,6 +81,7 @@ class Master:
         num_assigned_workers = len(assigned_workers)
 
         # TODO: What happens if we try to split the data in >len(data) parts? [] empty lists?
+        # TODO: Maximum amount of workers to ask for is len(data)
 
         # Split data to `num_assigned_workers` chunks and save them to HDFS
         for i, chunk in enumerate(self.split_data(map_data, num_assigned_workers)):
@@ -94,22 +94,26 @@ class Master:
                 worker_hostname=worker_hostname, task_id=i
             )
 
+        event = self.map_completion_event(job_id=job_id, n_tasks=num_assigned_workers)
+
         # Send async request to all the workers for each map task
         with ThreadPoolExecutor(max_workers=num_assigned_workers) as executor:
             executor.map(
-                lambda task_id, hostname: requests.post(
-                    f'http://{hostname}:5000/map-task',
-                    json={'job_id': job_id, 'task_id': task_id}
+                lambda task_info: requests.post(
+                    f'http://{task_info[1]}:5000/map-task',
+                    json={'job_id': job_id, 'task_id': task_info[0]}
                 ),
                 enumerate(assigned_workers)
             )
+            # shutdown automatically, wait for all tasks to complete
 
-        # using `Watcher` wait for the completion of all the map tasks
-        self.wait_map_completion(job_id=job_id, n_tasks=num_assigned_workers)
+        # wait on that event
+        while not event.is_set():
+            event.wait(1)
 
         # --------------------- 2. Shuffle Task -----------------------
 
-        # Polls zookeeper for workers. Blocks until at least one worker is assigned to this master.
+        # Polls zookeeper for workers. Blocks until one worker is assigned to this master.
         assigned_worker = self.get_idle_workers(requested_n_workers=1)
         assigned_worker_hostname = assigned_worker[0]
 
@@ -117,6 +121,9 @@ class Master:
         zk_client.register_task(
             task_type='shuffle', job_id=job_id, state='in-progress', worker_hostname=assigned_worker_hostname
         )
+
+        # Set up an event using `DataWatcher` for the completion of the shuffle task
+        event = self.shuffle_completion_event(job_id=job_id)
 
         # Send async request for the shuffle task
         with ThreadPoolExecutor(max_workers=1) as executor:
@@ -127,10 +134,11 @@ class Master:
                 )
             )
 
-        # using `Watcher` wait for the completion the shuffle task
-        self.wait_shuffle_completion(job_id=job_id)
+        # wait on that event
+        while not event.is_set():
+            event.wait(1)
 
-        # --------------------- 3. Reduce Task -----------------------
+        # --------------------- 3. Reduce Task ----------------------- (till here correct)
 
         # Get the distinct keys from the shuffling by number of .pickle files on shuffle_results/ in hdfs.
         num_distinct_keys = len(hdfs_client.hdfs.list(f'jobs/job_{job_id}/shuffle_results'))
@@ -151,24 +159,32 @@ class Master:
             # Notice that in the reduce stage, we defined `task_id` to be a list of the names of the shuffle
             # .pickle files that one worker will reduce. (Workers possibly reduce multiple shuffle outs)
             zk_client.register_task(
-                task_type='shuffle', job_id=job_id, state='in-progress',
+                task_type='reduce', job_id=job_id, state='in-progress',
                 worker_hostname=worker_hostname, task_id=task_ids
             )
+
+        # Set up an event using `DataWatcher` for the completion of all the reduce tasks
+        event = self.reduce_completion_event(job_id=job_id, list_tasks=equal_split_task_ids)
 
         # Send async request to all the workers for each map task
         with ThreadPoolExecutor(max_workers=num_assigned_workers) as executor:
             executor.map(
-                lambda task_id_list, hostname: requests.post(
-                    f'http://{hostname}:5000/shuffle-task',
-                    json={'job_id': job_id, 'task_id': task_id_list}
+                lambda task_info: requests.post(
+                    f'http://{task_info[0]}:5000/reduce-task',
+                    json={'job_id': job_id, 'task_ids': task_info[1]}
                 ),
                 zip(assigned_workers, equal_split_task_ids)
             )
+            # shutdown automatically, wait for all tasks to complete
 
-        # using `Watcher` wait for the completion the shuffle task
-        self.wait_reduce_completion(job_id=job_id, list_tasks=equal_split_task_ids)
+        # wait on that event
+        while not event.is_set():
+            event.wait(1)
 
-    def wait_map_completion(self, job_id, n_tasks):
+        # --------------- 4. Mark Job completed ----------------
+        zk_client.update_job(job_id=job_id, state='completed')
+
+    def map_completion_event(self, job_id, n_tasks):
         """
         Blocks until the specified job is completed.
 
@@ -196,11 +212,9 @@ class Master:
                     if completed_tasks == n_tasks:
                         event.set()
                     return False
+        return event
 
-        while not event.is_set():
-            event.wait(1)
-
-    def wait_shuffle_completion(self, job_id):
+    def shuffle_completion_event(self, job_id):
         """
         Blocks until the specified shuffle task for `job_id` is completed.
 
@@ -218,12 +232,10 @@ class Master:
 
             if task.state == 'completed':
                 event.set()
-            return False
+                return False
+        return event
 
-        while not event.is_set():
-            event.wait(1)
-
-    def wait_reduce_completion(self, job_id, list_tasks):
+    def reduce_completion_event(self, job_id, list_tasks):
         """
         Blocks until the reduce is completed for the job `job_id`.
 
@@ -258,9 +270,7 @@ class Master:
                     if completed_tasks == n_tasks:
                         event.set()
                     return False
-
-        while not event.is_set():
-            event.wait(1)
+        return event
 
     def new_job_watcher(self):
         """
@@ -280,9 +290,8 @@ class Master:
             # children is a list of the names of the children of jobs_path.
 
             job_id, requested_n_workers = zk_client.get_job(HOSTNAME)
-
             # we indeed got assigned a job (not None)
-            if job_id:
+            if job_id is not None:
                 # Start a new thread to handle the job
                 job_thread = threading.Thread(target=self.handle_job, args=(job_id, requested_n_workers))
                 job_thread.start()

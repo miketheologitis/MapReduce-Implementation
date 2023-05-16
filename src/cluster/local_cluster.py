@@ -17,7 +17,8 @@ class LocalCluster:
         if initialize:
             self.cluster_initialize(verbose=verbose)
 
-        self.scale(n_workers, n_masters, verbose=verbose)
+        if n_workers is not None or n_masters is not None:
+            self.scale(n_workers, n_masters, verbose=verbose)
 
     def get_zk_client(self):
         if self.zk_client is None:
@@ -44,8 +45,11 @@ class LocalCluster:
         job_id = zk_client.get_sequential_job_id()
 
         hdfs_client.job_create(job_id=job_id, data=data, map_func=map_func, reduce_func=reduce_func)
+
         zk_client.register_job(job_id=job_id, requested_n_workers=requested_n_workers)
 
+        # This is safe because we have many I/Os (zookeeper, hdfs) so the job cannot complete instantly
+        # TODO: Not really safe because we call `get_zk_client` first time here for `LocalMonitoring`!
         self.local_monitoring.wait_for_job_completion(job_id)
 
         output_data = []
@@ -93,18 +97,20 @@ class LocalCluster:
         _ = self.get_hdfs_client()
         self.get_zk_client().setup_paths()
 
-    def shutdown_cluster(self, verbose=False):
+    def shutdown_cluster(self, verbose=False, delete_hdfs_jobs=False):
         """
         Shutdown the local cluster by stopping services and cleaning up resources.
 
         :param verbose: Whether to print verbose output.
+        :param delete_hdfs_jobs: Whether to delete and not persist in the `volume` the finished jobs in HDFS
         """
         zk_client = self.get_zk_client()
         zk_client.zk.stop()
         zk_client.zk.close()
 
         hdfs_client = self.get_hdfs_client()
-        hdfs_client.cleanup()
+        if delete_hdfs_jobs:
+            hdfs_client.cleanup()
 
         subprocess.run(
             ['docker-compose', 'down'],

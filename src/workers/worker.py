@@ -63,7 +63,7 @@ class Worker:
 
         # Update state of this worker and task in Zookeeper
         zk_client.update_worker(HOSTNAME, state='idle')
-        zk_client.update_task('map', job_id=job_id, task_id=task_id, state='complete')
+        zk_client.update_task('map', job_id=job_id, task_id=task_id, state='completed')
 
         # Return OK
         return '', 200
@@ -107,7 +107,7 @@ class Worker:
 
         # Retrieve data from map_results directory
         data = []
-        for file in hdfs_client.hdfs.list(f'/jobs/job_{job_id}/map_results'):
+        for file in hdfs_client.hdfs.list(f'jobs/job_{job_id}/map_results'):
             data.extend(hdfs_client.get_data(f'jobs/job_{job_id}/map_results/{file}'))
 
         # Perform shuffling and save the results
@@ -116,7 +116,7 @@ class Worker:
 
         # Update state of this worker and task in Zookeeper
         zk_client.update_worker(HOSTNAME, state='idle')
-        zk_client.update_task('shuffle', job_id=job_id, state='complete')
+        zk_client.update_task('shuffle', job_id=job_id, state='completed')
 
         # Return OK
         return '', 200
@@ -164,7 +164,7 @@ class Worker:
 
         # Update state of this worker and task in Zookeeper
         zk_client.update_worker(HOSTNAME, state='idle')
-        zk_client.update_task('reduce', job_id=job_id, task_id=task_ids, state='complete')
+        zk_client.update_task('reduce', job_id=job_id, task_id=task_ids, state='completed')
 
         return '', 200
 

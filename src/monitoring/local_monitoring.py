@@ -46,21 +46,12 @@ class LocalMonitoring:
         # Get the Zookeeper client
         zk_client = self.get_zk_client()
 
-        # The path of the job in the Zookeeper's namespace
-        job_path = f'/jobs/{job_id}'
-
         # An event object is used to block the current thread until the event is set.
         # The event is initially unset.
         event = threading.Event()
 
-        # Before setting up the watch, check if the job is already completed.
-        # This step is important because changes that occurred before the watch was set up
-        # would not trigger the watch.
-        job_info = zk_client.get(job_path)
-        if job_info.state == 'completed':
-            # If the job is already completed, there's no need to set up a watch.
-            # So we return from the function.
-            return
+        # The path of the job in the Zookeeper's namespace
+        job_path = f'/jobs/{job_id}'
 
         # Set up a watch on the job path.
         # A watch is a one-time trigger that occurs when the data at the watched znode changes.
@@ -79,10 +70,6 @@ class LocalMonitoring:
                 event.set()
                 return False  # stop further calls https://kazoo.readthedocs.io/_/downloads/en/2.2/pdf/ page:43
 
-        # Wait until the job is completed.
-        # This is done by entering a loop that continues until the event is set.
-        # In each iteration of the loop, the thread is blocked for 1 second or until the event is set,
-        # whichever happens first.
         while not event.is_set():
             # TODO: print beautiful info
             event.wait(1)
