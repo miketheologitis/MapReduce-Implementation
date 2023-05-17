@@ -28,6 +28,7 @@ python -m unittest tests.unit_tests.test_worker
 python -m unittest tests.integration_tests.test_hdfs_client
 python -m unittest tests.integration_tests.test_zookeeper_client
 python -m unittest tests.integration_tests.test_local_cluster_local_monitoring
+python -m unittest tests.integration_tests.test_local_cluster
 ```
 
 ```bash
@@ -63,15 +64,6 @@ Reduce function assumes `(key, value)` tuples as input and does the obvious.
 
 Notice that in the map function we allow more freedom, i.e., `(X, ..., ...)`.
 
-
-## HDFS
-
-```python
-from hdfs import InsecureClient
-hdfs = InsecureClient('http://localhost:9870', user='mapreduce')
-hdfs.status('/')
-```
-
 # Current repo
 ```markdown
 MapReduce-Implementation/
@@ -104,6 +96,9 @@ MapReduce-Implementation/
 │   │   ├── __init__.py
 │   │   ├── test_worker.py
 │   │   └── test_master.py (+)
+├── examples/
+│   ├── __init__.py
+│   ├── testing.ipynb
 ├── README.md
 ├── requirements.txt
 ├── Dockerfile.worker

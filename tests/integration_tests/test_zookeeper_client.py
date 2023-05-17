@@ -50,7 +50,7 @@ class TestZookeeper(unittest.TestCase):
 
         # Assign jobs to masters and verify job state and assigned master
         for _ in range(10):
-            assigned_job_id = self.zk_client.get_job('master1')
+            assigned_job_id, _ = self.zk_client.get_job('master1')
             assigned_jobs.append(assigned_job_id)
 
         # Verify the state and assigned master of each job
@@ -62,6 +62,7 @@ class TestZookeeper(unittest.TestCase):
             else:
                 self.assertTrue(job.state == 'in-progress')
                 self.assertTrue(job.master_hostname == 'master1')
+            self.assertIsNone(job.requested_n_workers)
 
     def test_register_worker(self):
         """Test case to register workers in ZooKeeper and verify their registration."""
@@ -82,9 +83,9 @@ class TestZookeeper(unittest.TestCase):
     def test_task_ops(self):
         """Test case to perform task operations in ZooKeeper and verify their correctness."""
         # Assert correct creations
-        self.zk_client.register_task(task_type='map', job_id=1, task_id=1)
-        self.zk_client.register_task(task_type='shuffle', job_id=1)
-        self.zk_client.register_task(task_type='reduce', job_id=1, task_id=[0, 1, 2, 3, 4])
+        self.zk_client.register_task(task_type='map', job_id=1, state='idle', worker_hostname='123', task_id=1)
+        self.zk_client.register_task(task_type='shuffle', state='idle', worker_hostname='123', job_id=1)
+        self.zk_client.register_task(task_type='reduce', state='idle', job_id=1, worker_hostname='123', task_id=[0, 1, 2, 3, 4])
 
         self.assertTrue(self.zk_client.zk.exists('/map_tasks/1_1'))
         self.assertTrue(self.zk_client.zk.exists('/shuffle_tasks/1'))

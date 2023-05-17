@@ -20,7 +20,7 @@ kazoo_logger.setLevel(logging.ERROR)
 │   ├── <HOSTNAME>      (created by `master` on register `ephemeral`)
 │   ├── ...
 ├── jobs/
-│   ├── <HOSTNAME>  `master` hostname. (created by ?)
+│   ├── <HOSTNAME>  `master` hostname. (created by `user`)
 ├── map_tasks/      (created by `user` `not ephemeral`)
 │   ├── <job_id>_<task_id>   
 ├── shuffle_tasks/      (created by `user` `not ephemeral`)
@@ -45,9 +45,11 @@ class WorkerInfo(NamedTuple):
 class Job(NamedTuple):
     """
     :param master_hostname: `master` hostname that is assigned to this job
+    :param requested_n_workers: The number of workers requested for this job
     :param state: Task state ('idle', 'in-progress', 'completed').
     """
     state: str = 'idle'
+    requested_n_workers: int = None
     master_hostname: str = None
 
 
@@ -58,10 +60,10 @@ class MasterInfo(NamedTuple):
 class Task(NamedTuple):
     """
     :param worker_hostname: Worker hostname that runs the task.
-    :param state: Task state ('idle', 'in-progress', 'completed').
+    :param state: Task state ('in-progress', 'completed').
     """
-    worker_hostname: str = None
-    state: str = 'idle'
+    state: str
+    worker_hostname: str
 
 
 class ZookeeperClient:
@@ -113,15 +115,17 @@ class ZookeeperClient:
         # the master disconnects
         self.zk.create(f'/masters/{master_hostname}', serialized_master_info, ephemeral=True)
 
-    def register_task(self, task_type, job_id, task_id=None):
+    def register_task(self, task_type, job_id, state, worker_hostname, task_id=None):
         """
         Registers a task in ZooKeeper.
 
         :param task_type: Task type ('map', 'reduce', 'shuffle').
         :param job_id: Unique job ID.
+        :param state: 'in-progress'
+        :param worker_hostname: The worker that got assigned this task (hostname)
         :param task_id: Task ID (optional for 'map' and 'shuffle' tasks).
         """
-        task = Task()
+        task = Task(state=state, worker_hostname=worker_hostname)
         serialized_task = pickle.dumps(task)
 
         if task_type == 'map':
@@ -132,13 +136,14 @@ class ZookeeperClient:
         else:
             self.zk.create(f'/shuffle_tasks/{job_id}', serialized_task)
 
-    def register_job(self, job_id):
+    def register_job(self, job_id, requested_n_workers=None):
         """
         Registers a job in ZooKeeper.
 
         :param job_id: The unique job id
+        :param requested_n_workers: The number of workers requested for this job
         """
-        job = Job()
+        job = Job(requested_n_workers=requested_n_workers)
         serialized_job = pickle.dumps(job)
         self.zk.create(f'/jobs/{job_id}', serialized_job)
 
@@ -197,7 +202,7 @@ class ZookeeperClient:
         updated_job_info = job_info._replace(**kwargs)
         self.zk.set(job_path, pickle.dumps(updated_job_info))
 
-    def get_workers_for_tasks(self, n):
+    def get_workers_for_tasks(self, n=None):
         """
         Retrieves 'idle' workers, marks them as 'in-task', and returns their hostnames.
 
@@ -231,7 +236,7 @@ class ZookeeperClient:
                     # Add the worker hostname to the list of idle workers
                     idle_workers.append(hostname)
 
-                    if len(idle_workers) == n:
+                    if not n and len(idle_workers) == n:
                         # If the desired number of idle workers is reached, break the loop
                         break
 
@@ -250,6 +255,7 @@ class ZookeeperClient:
 
         :param master_hostname: Hostname of the master.
         :return: The job ID of the retrieved idle job, or None if no idle jobs are available.
+                 and the number of workers requested for this job
         """
 
         with self.zk.Lock("/locks/master_job_assignment_lock"):
@@ -259,13 +265,14 @@ class ZookeeperClient:
 
             for job_id in children:
                 job = self.get(f'/jobs/{job_id}')
+                requested_n_workers = job.requested_n_workers
 
                 if job.state == 'idle':
                     # Update the job state to 'in-progress' with the assigned master hostname
                     self.update_job(job_id, state='in-progress', master_hostname=master_hostname)
-                    return int(job_id)
+                    return int(job_id), requested_n_workers
 
-            return None
+            return None, None
 
     def get_sequential_job_id(self):
         """

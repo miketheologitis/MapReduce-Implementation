@@ -1,4 +1,3 @@
-import time
 import subprocess
 
 from ..hadoop.hdfs_client import HdfsClient
@@ -18,32 +17,39 @@ class LocalCluster:
         if initialize:
             self.cluster_initialize(verbose=verbose)
 
-        self.scale(n_workers, n_masters, verbose=verbose)
+        if n_workers is not None or n_masters is not None:
+            self.scale(n_workers, n_masters, verbose=verbose)
 
     def get_zk_client(self):
         if self.zk_client is None:
             self.zk_client = ZookeeperClient(self.zk_hosts)
         return self.zk_client
 
-    def get_hdfs_client(self, retries=15, sleep_sec=10, with_init=False):
+    def get_hdfs_client(self):
         if self.hdfs_client is None:
             self.hdfs_client = HdfsClient(self.hdfs_host)
         return self.hdfs_client
 
-    def mapreduce(self, data, map_func, reduce_func):
+    def mapreduce(self, data, map_func, reduce_func, requested_n_workers=None):
         """
         Perform MapReduce on the local cluster. Blocks until completion.
 
         :param data: Input data for MapReduce.
         :param map_func: Map function.
         :param reduce_func: Reduce function.
+        :param requested_n_workers: The number of workers requested for this job (`None` means all available)
         """
         hdfs_client = self.get_hdfs_client()
         zk_client = self.get_zk_client()
 
         job_id = zk_client.get_sequential_job_id()
+
         hdfs_client.job_create(job_id=job_id, data=data, map_func=map_func, reduce_func=reduce_func)
 
+        zk_client.register_job(job_id=job_id, requested_n_workers=requested_n_workers)
+
+        # This is safe because we have many I/Os (zookeeper, hdfs) so the job cannot complete instantly
+        # TODO: Not really safe because we call `get_zk_client` first time here for `LocalMonitoring`!
         self.local_monitoring.wait_for_job_completion(job_id)
 
         output_data = []
@@ -60,6 +66,8 @@ class LocalCluster:
         :param n_masters: Number of masters. If not provided, the current number of registered masters will be used.
         :param verbose: Whether to print verbose output.
         """
+
+        # This to make sure we do not delete workers. --scale with the same number as live, does not recreate
         if not n_workers:
             _, n_workers = self.local_monitoring.get_registered_workers()
         if not n_masters:
@@ -89,25 +97,23 @@ class LocalCluster:
         _ = self.get_hdfs_client()
         self.get_zk_client().setup_paths()
 
-    def shutdown_cluster(self, verbose=False):
+    def shutdown_cluster(self, verbose=False, delete_hdfs_jobs=False):
         """
         Shutdown the local cluster by stopping services and cleaning up resources.
 
         :param verbose: Whether to print verbose output.
+        :param delete_hdfs_jobs: Whether to delete and not persist in the `volume` the finished jobs in HDFS
         """
         zk_client = self.get_zk_client()
         zk_client.zk.stop()
         zk_client.zk.close()
 
         hdfs_client = self.get_hdfs_client()
-        hdfs_client.cleanup()
+        if delete_hdfs_jobs:
+            hdfs_client.cleanup()
 
         subprocess.run(
             ['docker-compose', 'down'],
             stdout=subprocess.DEVNULL if not verbose else None,
             stderr=subprocess.DEVNULL if not verbose else None
         )
-
-
-
-
