@@ -57,7 +57,7 @@ class Master:
         while not idle_assigned_workers:
             idle_assigned_workers = zk_client.get_workers_for_tasks(requested_n_workers)
             if not idle_assigned_workers:
-                time.sleep(5)
+                time.sleep(3)
 
         return idle_assigned_workers
 
@@ -77,11 +77,14 @@ class Master:
         map_data = self.hdfs_client.get_data(hdfs_path=f'jobs/job_{job_id}/data.pickle')
 
         # Polls zookeeper for workers. Blocks until at least one worker is assigned to this master.
-        assigned_workers = self.get_idle_workers(requested_n_workers=requested_n_workers)
+        # Maximum amount of workers to ask for is len(data)
+        assigned_workers = self.get_idle_workers(
+            requested_n_workers=min(
+                requested_n_workers if requested_n_workers else len(map_data),
+                len(map_data)
+            )
+        )
         num_assigned_workers = len(assigned_workers)
-
-        # TODO: What happens if we try to split the data in >len(data) parts? [] empty lists?
-        # TODO: Maximum amount of workers to ask for is len(data)
 
         # Split data to `num_assigned_workers` chunks and save them to HDFS
         for i, chunk in enumerate(self.split_data(map_data, num_assigned_workers)):
@@ -144,10 +147,14 @@ class Master:
         num_distinct_keys = len(hdfs_client.hdfs.list(f'jobs/job_{job_id}/shuffle_results'))
 
         # Polls zookeeper for workers. Blocks until at least one worker is assigned to this master.
-        assigned_workers = self.get_idle_workers(requested_n_workers=requested_n_workers)
+        # Maximum amount of workers to ask for is `num_distinct_keys`
+        assigned_workers = self.get_idle_workers(
+            requested_n_workers=min(
+                requested_n_workers if requested_n_workers else num_distinct_keys,
+                num_distinct_keys
+            )
+        )
         num_assigned_workers = len(assigned_workers)
-
-        # TODO: What if our distinct out keys are less than the workers we try to split with? [] empty lists?
 
         # Zookeeper gave us `num_assigned_workers` for the reduce operation hence now we have to assign
         # equally the shuffle results to the reduce workers. We can do this like this
