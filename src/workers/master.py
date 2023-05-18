@@ -57,31 +57,26 @@ class Master:
         while not idle_assigned_workers:
             idle_assigned_workers = zk_client.get_workers_for_tasks(requested_n_workers)
             if not idle_assigned_workers:
-                time.sleep(5)
+                time.sleep(3)
 
         return idle_assigned_workers
 
-    def handle_job(self, job_id, requested_n_workers):
-        """
-        For Map, Reduce we will try to get `requested_n_workers` workers from zookeeper. If
-        Zookeeper can only acquire us less than that number of workers then we continue the task,
-        with this number of workers (even if only 1 worker is available for example). When no workers
-        are available, we wait until at least a single worker is available.
+    def handle_map(self, job_id, requested_n_workers):
 
-        """
         zk_client = self.get_zk_client()
         hdfs_client = self.get_hdfs_client()
-
-        # --------------------- 1. Map Task -----------------------
 
         map_data = self.hdfs_client.get_data(hdfs_path=f'jobs/job_{job_id}/data.pickle')
 
         # Polls zookeeper for workers. Blocks until at least one worker is assigned to this master.
-        assigned_workers = self.get_idle_workers(requested_n_workers=requested_n_workers)
+        # Maximum amount of workers to ask for is len(data)
+        assigned_workers = self.get_idle_workers(
+            requested_n_workers=min(
+                requested_n_workers if requested_n_workers else len(map_data),
+                len(map_data)
+            )
+        )
         num_assigned_workers = len(assigned_workers)
-
-        # TODO: What happens if we try to split the data in >len(data) parts? [] empty lists?
-        # TODO: Maximum amount of workers to ask for is len(data)
 
         # Split data to `num_assigned_workers` chunks and save them to HDFS
         for i, chunk in enumerate(self.split_data(map_data, num_assigned_workers)):
@@ -111,7 +106,8 @@ class Master:
         while not event.is_set():
             event.wait(1)
 
-        # --------------------- 2. Shuffle Task -----------------------
+    def handle_shuffle(self, job_id):
+        zk_client = self.get_zk_client()
 
         # Polls zookeeper for workers. Blocks until one worker is assigned to this master.
         assigned_worker = self.get_idle_workers(requested_n_workers=1)
@@ -138,16 +134,22 @@ class Master:
         while not event.is_set():
             event.wait(1)
 
-        # --------------------- 3. Reduce Task ----------------------- (till here correct)
+    def handle_reduce(self, job_id, requested_n_workers):
+        zk_client = self.get_zk_client()
+        hdfs_client = self.get_hdfs_client()
 
         # Get the distinct keys from the shuffling by number of .pickle files on shuffle_results/ in hdfs.
         num_distinct_keys = len(hdfs_client.hdfs.list(f'jobs/job_{job_id}/shuffle_results'))
 
         # Polls zookeeper for workers. Blocks until at least one worker is assigned to this master.
-        assigned_workers = self.get_idle_workers(requested_n_workers=requested_n_workers)
+        # Maximum amount of workers to ask for is `num_distinct_keys`
+        assigned_workers = self.get_idle_workers(
+            requested_n_workers=min(
+                requested_n_workers if requested_n_workers else num_distinct_keys,
+                num_distinct_keys
+            )
+        )
         num_assigned_workers = len(assigned_workers)
-
-        # TODO: What if our distinct out keys are less than the workers we try to split with? [] empty lists?
 
         # Zookeeper gave us `num_assigned_workers` for the reduce operation hence now we have to assign
         # equally the shuffle results to the reduce workers. We can do this like this
@@ -181,8 +183,25 @@ class Master:
         while not event.is_set():
             event.wait(1)
 
-        # --------------- 4. Mark Job completed ----------------
-        zk_client.update_job(job_id=job_id, state='completed')
+    def handle_job(self, job_id, requested_n_workers):
+        """
+        For Map, Reduce we will try to get `requested_n_workers` workers from zookeeper. If
+        Zookeeper can only acquire us less than that number of workers then we continue the task,
+        with this number of workers (even if only 1 worker is available for example). When no workers
+        are available, we wait until at least a single worker is available.
+
+        """
+        # 1. Map Tasks (blocks of course)
+        self.handle_map(job_id, requested_n_workers)
+
+        # 2. Shuffle Task (blocks of course)
+        self.handle_shuffle(job_id)
+
+        # 3. Reduce Tasks (blocks of course)
+        self.handle_reduce(job_id, requested_n_workers)
+
+        # 4. Mark Job completed
+        self.get_zk_client().update_job(job_id=job_id, state='completed')
 
     def map_completion_event(self, job_id, n_tasks):
         """
@@ -241,7 +260,7 @@ class Master:
 
         :param job_id: ID of the job that the tasks belong to
         :param list_tasks: Each reduce task handles possibly multiple tasks which is represented
-            as a list. This is because reduce gets data from the shuffle tasks and we could assign
+            as a list. This is because reduce gets data from the shuffle tasks, so we could assign
             multiple shuffle results to a single reducer.
 
             For example: list_tasks = [[0, 1], [2, 3, 4], [5]] which means that worker1 reduces the

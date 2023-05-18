@@ -68,9 +68,9 @@ class LocalCluster:
         """
 
         # This to make sure we do not delete workers. --scale with the same number as live, does not recreate
-        if not n_workers:
+        if n_workers is None:
             _, n_workers = self.local_monitoring.get_registered_workers()
-        if not n_masters:
+        if n_masters is None:
             _, n_masters = self.local_monitoring.get_registered_masters()
 
         subprocess.run(

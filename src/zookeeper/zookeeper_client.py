@@ -236,7 +236,7 @@ class ZookeeperClient:
                     # Add the worker hostname to the list of idle workers
                     idle_workers.append(hostname)
 
-                    if not n and len(idle_workers) == n:
+                    if n is not None and len(idle_workers) == n:
                         # If the desired number of idle workers is reached, break the loop
                         break
 
