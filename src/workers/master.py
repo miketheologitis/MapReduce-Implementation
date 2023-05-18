@@ -61,18 +61,10 @@ class Master:
 
         return idle_assigned_workers
 
-    def handle_job(self, job_id, requested_n_workers):
-        """
-        For Map, Reduce we will try to get `requested_n_workers` workers from zookeeper. If
-        Zookeeper can only acquire us less than that number of workers then we continue the task,
-        with this number of workers (even if only 1 worker is available for example). When no workers
-        are available, we wait until at least a single worker is available.
+    def handle_map(self, job_id, requested_n_workers):
 
-        """
         zk_client = self.get_zk_client()
         hdfs_client = self.get_hdfs_client()
-
-        # --------------------- 1. Map Task -----------------------
 
         map_data = self.hdfs_client.get_data(hdfs_path=f'jobs/job_{job_id}/data.pickle')
 
@@ -114,8 +106,8 @@ class Master:
         while not event.is_set():
             event.wait(1)
 
-        # --------------------- 2. Shuffle Task -----------------------
-        time.sleep(10)  # CHANGE
+    def handle_shuffle(self, job_id):
+        zk_client = self.get_zk_client()
 
         # Polls zookeeper for workers. Blocks until one worker is assigned to this master.
         assigned_worker = self.get_idle_workers(requested_n_workers=1)
@@ -142,8 +134,9 @@ class Master:
         while not event.is_set():
             event.wait(1)
 
-        # --------------------- 3. Reduce Task ----------------------- (till here correct)
-        time.sleep(10)  # CHANGE
+    def handle_reduce(self, job_id, requested_n_workers):
+        zk_client = self.get_zk_client()
+        hdfs_client = self.get_hdfs_client()
 
         # Get the distinct keys from the shuffling by number of .pickle files on shuffle_results/ in hdfs.
         num_distinct_keys = len(hdfs_client.hdfs.list(f'jobs/job_{job_id}/shuffle_results'))
@@ -190,8 +183,25 @@ class Master:
         while not event.is_set():
             event.wait(1)
 
-        # --------------- 4. Mark Job completed ----------------
-        zk_client.update_job(job_id=job_id, state='completed')
+    def handle_job(self, job_id, requested_n_workers):
+        """
+        For Map, Reduce we will try to get `requested_n_workers` workers from zookeeper. If
+        Zookeeper can only acquire us less than that number of workers then we continue the task,
+        with this number of workers (even if only 1 worker is available for example). When no workers
+        are available, we wait until at least a single worker is available.
+
+        """
+        # 1. Map Tasks (blocks of course)
+        self.handle_map(job_id, requested_n_workers)
+
+        # 2. Shuffle Task (blocks of course)
+        self.handle_shuffle(job_id)
+
+        # 3. Reduce Tasks (blocks of course)
+        self.handle_reduce(job_id, requested_n_workers)
+
+        # 4. Mark Job completed
+        self.get_zk_client().update_job(job_id=job_id, state='completed')
 
     def map_completion_event(self, job_id, n_tasks):
         """
@@ -250,7 +260,7 @@ class Master:
 
         :param job_id: ID of the job that the tasks belong to
         :param list_tasks: Each reduce task handles possibly multiple tasks which is represented
-            as a list. This is because reduce gets data from the shuffle tasks and we could assign
+            as a list. This is because reduce gets data from the shuffle tasks, so we could assign
             multiple shuffle results to a single reducer.
 
             For example: list_tasks = [[0, 1], [2, 3, 4], [5]] which means that worker1 reduces the
