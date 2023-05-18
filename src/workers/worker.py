@@ -55,8 +55,8 @@ class Worker:
         data = hdfs_client.get_data(f'jobs/job_{job_id}/map_tasks/{task_id}.pickle')
         map_func = hdfs_client.get_func(f'jobs/job_{job_id}/map_func.pickle')
 
-        # Apply the map function to each input key-value pair, and flatten the results into a single list
-        output_data = list(chain.from_iterable(map(lambda x: map_func(*x), data)))
+        # Apply the map func to the data
+        output_data = map_func(data)
 
         # Save the results to HDFS (using `job_id` and `task_id`)
         hdfs_client.save_data(f'jobs/job_{job_id}/map_results/{task_id}.pickle', output_data)
@@ -150,9 +150,9 @@ class Worker:
 
         reduce_func = hdfs_client.get_func(f'jobs/job_{job_id}/reduce_func.pickle')
 
-        # Apply reduction to the shuffled data
+        # Apply reduction to the shuffled data (key, List[v])
         reduce_results = [
-            (key, reduce(reduce_func, values))
+            (key, reduce_func(values))
             for key, values in data
         ]
 

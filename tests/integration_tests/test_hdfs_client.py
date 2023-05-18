@@ -22,7 +22,6 @@ class TestHdfs(unittest.TestCase):
 
         cls.hdfs_client = HdfsClient("localhost:9870")
 
-
     def test_job_create_dirs(self):
         for i in range(10):
             self.hdfs_client.job_create(job_id=i, data=[1, 23], map_func=lambda x: x, reduce_func=lambda x: x)
@@ -44,9 +43,16 @@ class TestHdfs(unittest.TestCase):
     def test_perform_job(self):
         job_id = 106
 
-        data = [("mike1",), ("george",), ("1g2eommrg3",)]
-        map_func = lambda x: map(lambda letter: (letter, 1), x)  # [('m', 1), ('i', 1), ...]
-        reduce_func = lambda x, y: x+y
+        data = ["mike1", "george", "1g2eommrg3"]
+
+        def map_func(d):
+            tmp_func = lambda x: map(lambda letter: (letter, 1), x)
+            result = []
+            for x in d:
+                result.extend(tmp_func(x))
+            return result
+
+        reduce_func = lambda x: sum(x)
 
         # 1. Save to HDFS the MapReduce `data`, `map_func`, `reduce_func`
 
@@ -57,7 +63,7 @@ class TestHdfs(unittest.TestCase):
         task_id = 1
         worker_map_data = self.hdfs_client.get_data(f'jobs/job_{job_id}/data.pickle')
         worker_map_func = self.hdfs_client.get_func(f'jobs/job_{job_id}/map_func.pickle')
-        worker_map_results = list(chain.from_iterable(map(lambda x: map_func(*x), worker_map_data)))
+        worker_map_results = worker_map_func(worker_map_data)
 
         # 3. `worker` saves the map_results to `jobs/job_<job_id>/map_tasks/map_results_<task_id>.pickle
         self.hdfs_client.save_data(f'jobs/job_{job_id}/map_results/{task_id}.pickle', worker_map_results)
@@ -84,7 +90,7 @@ class TestHdfs(unittest.TestCase):
 
         # reduce
         reduce_results = [
-            (key, reduce(reduce_func, values))
+            (key, reduce_func(values))
             for key, values in shuffle_data
         ]
 
@@ -122,6 +128,7 @@ class TestHdfs(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls) -> None:
+        cls.hdfs_client.cleanup()
         # Run `docker-compose down`
         subprocess.run(
             ['docker-compose', 'down'],
