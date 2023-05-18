@@ -115,6 +115,7 @@ class Master:
             event.wait(1)
 
         # --------------------- 2. Shuffle Task -----------------------
+        time.sleep(10)  # CHANGE
 
         # Polls zookeeper for workers. Blocks until one worker is assigned to this master.
         assigned_worker = self.get_idle_workers(requested_n_workers=1)
@@ -142,6 +143,7 @@ class Master:
             event.wait(1)
 
         # --------------------- 3. Reduce Task ----------------------- (till here correct)
+        time.sleep(10)  # CHANGE
 
         # Get the distinct keys from the shuffling by number of .pickle files on shuffle_results/ in hdfs.
         num_distinct_keys = len(hdfs_client.hdfs.list(f'jobs/job_{job_id}/shuffle_results'))

@@ -130,6 +130,29 @@ class TestZookeeper(unittest.TestCase):
         for worker in workers:
             self.assertTrue(self.zk_client.get(f'/workers/{worker}').state == 'in-task')
 
+    def test_single_worker_bug(self):
+        # Make all workers' state 'idle'
+        self.idle_workers = []
+        for worker_hostname in self.zk_client.zk.get_children('/workers'):
+            self.zk_client.update_worker(worker_hostname, state='idle')
+            self.idle_workers.append(f'{worker_hostname}')
+
+        # Get only one worker
+        assigned_worker = self.zk_client.get_workers_for_tasks(1)
+
+        self.assertTrue(len(assigned_worker) == 1)
+
+        # Make all workers' state 'idle'
+        num_in_task = 0
+        for worker_hostname in self.zk_client.zk.get_children('/workers'):
+            worker = self.zk_client.get(f'/workers/{worker_hostname}')
+            if worker.state == 'in-task':
+                num_in_task += 1
+
+        self.assertEqual(num_in_task, 1)
+
+
+
     @classmethod
     def tearDownClass(cls) -> None:
         """Tear down the ZooKeeper client and shut down the containers."""
