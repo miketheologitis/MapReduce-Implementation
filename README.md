@@ -19,7 +19,7 @@ pip install -r requirements.txt
 
 Example:
 ```python
-def map(data):
+def map_func(data):
     result = []
     for string in data:
         for char in string:
@@ -47,11 +47,8 @@ Output: [('e', [1, 1, 1, 1]), ('g', [1, 1]), ('i', [1]), ('k', [1]),
 `reduce([(k1, [v1, v2, ...]), (k2, [y1, y2, ...]), ...]) -> [(k1, x1), (k2, x2), ...)]`
 
 ```python
-def reduce(data):
-    result = []
-    for key, values in data:
-        result.append((key, sum(values)))
-    return result
+def reduce_func(values):
+    return sum(values)
 ```
 ```python
 Input: [('e', [1, 1, 1, 1]), ('g', [1, 1]), ('i', [1]), ('k', [1]),

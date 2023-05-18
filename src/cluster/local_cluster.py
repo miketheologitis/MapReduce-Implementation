@@ -1,7 +1,5 @@
 import subprocess
-
-from ..hadoop.hdfs_client import HdfsClient
-from ..zookeeper.zookeeper_client import ZookeeperClient
+import concurrent.futures
 from ..monitoring.local_monitoring import LocalMonitoring
 
 
@@ -21,14 +19,10 @@ class LocalCluster:
             self.scale(n_workers, n_masters, verbose=verbose)
 
     def get_zk_client(self):
-        if self.zk_client is None:
-            self.zk_client = ZookeeperClient(self.zk_hosts)
-        return self.zk_client
+        return self.local_monitoring.get_zk_client()
 
     def get_hdfs_client(self):
-        if self.hdfs_client is None:
-            self.hdfs_client = HdfsClient(self.hdfs_host)
-        return self.hdfs_client
+        return self.local_monitoring.get_hdfs_client()
 
     def mapreduce(self, data, map_func, reduce_func, requested_n_workers=None):
         """
@@ -49,7 +43,47 @@ class LocalCluster:
         zk_client.register_job(job_id=job_id, requested_n_workers=requested_n_workers)
 
         # This is safe because we have many I/Os (zookeeper, hdfs) so the job cannot complete instantly
-        # TODO: Not really safe because we call `get_zk_client` first time here for `LocalMonitoring`!
+        self.local_monitoring.wait_for_job_completion(job_id)
+
+        output_data = []
+        for filename in hdfs_client.hdfs.list(f'jobs/job_{job_id}/reduce_results/'):
+            output_data.extend(hdfs_client.get_data(f'jobs/job_{job_id}/reduce_results/{filename}'))
+
+        return output_data
+
+    def non_blocking_mapreduce(self, data, map_func, reduce_func, requested_n_workers=None):
+        """
+        Perform MapReduce on the local cluster. Returns a Future object immediately.
+
+        :param data: Input data for MapReduce.
+        :param map_func: Map function.
+        :param reduce_func: Reduce function.
+        :param requested_n_workers: The number of workers requested for this job (`None` means all available)
+        :return: concurrent.futures.Future
+        """
+        hdfs_client = self.get_hdfs_client()
+        zk_client = self.get_zk_client()
+
+        job_id = zk_client.get_sequential_job_id()
+
+        hdfs_client.job_create(job_id=job_id, data=data, map_func=map_func, reduce_func=reduce_func)
+
+        zk_client.register_job(job_id=job_id, requested_n_workers=requested_n_workers)
+
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        job_completion_future = executor.submit(self.wait_for_completion_and_get_results, job_id)
+
+        return job_completion_future
+
+    def wait_for_completion_and_get_results(self, job_id):
+        """
+        Wait for the job to complete, then get the results.
+
+        :param job_id: The id of the job to wait for.
+        :return: The results of the job.
+        """
+        hdfs_client = self.get_hdfs_client()
+
         self.local_monitoring.wait_for_job_completion(job_id)
 
         output_data = []
