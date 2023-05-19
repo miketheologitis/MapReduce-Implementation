@@ -409,7 +409,7 @@ class Master:
             if dead_workers:
                 # if there are dead workers, reassign their tasks
                 for dead_worker in dead_workers:
-                    task_filename, task_type = zk_client.get_worker_task(dead_worker)
+                    task_filename, task_type = zk_client.get_dead_worker_task(dead_worker)
 
                     if task_filename is not None:
                         # Start a new thread to handle the task
@@ -439,7 +439,7 @@ class Master:
         zk_client = self.get_zk_client()
         zk_client.register_master(HOSTNAME)
         self.new_job_watcher()
-        # TODO: setup_dead_worker_watcher()
+        self.dead_workers_watcher()
         app.run(host='0.0.0.0', port=5000)
 
 
