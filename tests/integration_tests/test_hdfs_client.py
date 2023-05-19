@@ -19,6 +19,7 @@ class TestHdfs(unittest.TestCase):
         )
 
         cls.hdfs_client = HdfsClient("localhost:9870")
+        cls.hdfs_client.cleanup()
 
     def test_job_create_dirs(self):
         for i in range(10):
