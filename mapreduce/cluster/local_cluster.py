@@ -112,6 +112,9 @@ class LocalCluster:
         self.get_zk_client().setup_paths()
 
     def hdfs_cleanup(self):
+        """
+        Delete and not persist in the `volume` the finished jobs in HDFS
+        """
         self.get_hdfs_client().cleanup()
 
     def shutdown_cluster(self, verbose=False, delete_hdfs_jobs=False):

@@ -74,13 +74,13 @@ class HdfsClient:
 
     def save_data(self, hdfs_path, data):
         """
-        Serialize and save data to HDFS.
+        Serialize and save data to HDFS. Overwrite if already exists (should never happen).
 
         :param hdfs_path: The HDFS path to save the data.
         :param data: The data to be saved.
         """
         pickled_data = pickle.dumps(data)
-        self.hdfs.write(hdfs_path, data=pickled_data)
+        self.hdfs.write(hdfs_path, data=pickled_data, overwrite=True)
 
     def save_func(self, hdfs_path, func):
         """

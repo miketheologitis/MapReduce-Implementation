@@ -130,10 +130,12 @@ class ZookeeperClient:
 
         if task_type == 'map':
             self.zk.create(f'/map_tasks/{job_id}_{task_id}', serialized_task)
-        elif task_type == 'reduce':
+
+        if task_type == 'reduce':
             suffix_id = '_'.join(map(str, task_id))
             self.zk.create(f'/reduce_tasks/{job_id}_{suffix_id}', serialized_task)
-        else:
+
+        if task_type == 'shuffle':
             self.zk.create(f'/shuffle_tasks/{job_id}', serialized_task)
 
     def register_job(self, job_id, requested_n_workers=None):
@@ -156,12 +158,16 @@ class ZookeeperClient:
         :param task_id: Task ID (optional for 'map' and 'shuffle' tasks).
         :param kwargs: Additional attributes to update in the task.
         """
+        task_path = None
+
         if task_type == 'map':
             task_path = f'/map_tasks/{job_id}_{task_id}'
-        elif task_type == 'reduce':
+
+        if task_type == 'reduce':
             suffix_id = '_'.join(map(str, task_id))
             task_path = f'/reduce_tasks/{job_id}_{suffix_id}'
-        else:
+
+        if task_type == 'shuffle':
             task_path = f'/shuffle_tasks/{job_id}'
 
         task = self.get(task_path)
@@ -271,6 +277,44 @@ class ZookeeperClient:
                     # Update the job state to 'in-progress' with the assigned master hostname
                     self.update_job(job_id, state='in-progress', master_hostname=master_hostname)
                     return int(job_id), requested_n_workers
+
+            return None, None
+
+    def get_dead_worker_task(self, dead_worker_hostname):
+        """
+        Finds the task that of the dead worker that is 'in-progress'. Notice that only one such task exists (if any).
+        This method is protected by a distributed lock to ensure that only one master can execute it at a time across
+        the distributed system. If such a task is found we update its HOSTNAME to 'None' so that no other master gets
+        assigned to handle that. We also return the type of task it was, i.e., 'map', 'shuffle', or 'reduce'.
+        If no such task is found we return None.
+
+        :param dead_worker_hostname: Hostname of the dead worker.
+        :returns: Tuple (filename, task_type) or (None, None) if no such task is found. From the filename we can
+                    extract the job_id and task_id.
+        """
+
+        with self.zk.Lock("/locks/dead_worker_task_lock"):
+
+            # Look for such 'in-progress' task in `/map_tasks`
+            for task_file in self.zk.get_children('/map_tasks'):
+                task = self.get(f'/map_tasks/{task_file}')
+                if task.worker_hostname == dead_worker_hostname and task.state == 'in-progress':
+                    self.zk.set(f'/map_tasks/{task_file}', pickle.dumps(task._replace(worker_hostname='None')))
+                    return task_file, 'map'
+
+            # Look for such 'in-progress' task in `/shuffle_tasks`
+            for task_file in self.zk.get_children('/shuffle_tasks'):
+                task = self.get(f'/shuffle_tasks/{task_file}')
+                if task.worker_hostname == dead_worker_hostname and task.state == 'in-progress':
+                    self.zk.set(f'/shuffle_tasks/{task_file}', pickle.dumps(task._replace(worker_hostname='None')))
+                    return task_file, 'shuffle'
+
+            # Look for such 'in-progress' task in `/reduce_tasks`
+            for task_file in self.zk.get_children('/reduce_tasks'):
+                task = self.get(f'/reduce_tasks/{task_file}')
+                if task.worker_hostname == dead_worker_hostname and task.state == 'in-progress':
+                    self.zk.set(f'/reduce_tasks/{task_file}', pickle.dumps(task._replace(worker_hostname='None')))
+                    return task_file, 'reduce'
 
             return None, None
 
