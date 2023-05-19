@@ -1,10 +1,8 @@
 
 from flask import Flask, request
 import os
-import time
 from operator import itemgetter
-from itertools import groupby, chain
-from functools import reduce
+from itertools import groupby
 
 from ..zookeeper.zookeeper_client import ZookeeperClient
 from ..hadoop.hdfs_client import HdfsClient
