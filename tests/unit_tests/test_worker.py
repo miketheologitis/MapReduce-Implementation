@@ -1,10 +1,10 @@
 import unittest
 import random
 from unittest.mock import patch, call, create_autospec
-from src.zookeeper.zookeeper_client import ZookeeperClient
-from src.hadoop.hdfs_client import HdfsClient
+from mapreduce.zookeeper.zookeeper_client import ZookeeperClient
+from mapreduce.hadoop.hdfs_client import HdfsClient
 from hdfs import InsecureClient
-from src.workers.worker import app, worker
+from mapreduce.workers.worker import app, worker
 
 
 class TestWorker(unittest.TestCase):
@@ -37,8 +37,8 @@ class TestWorker(unittest.TestCase):
         # Test data and mapper function
         input_data = [("key1", 1), ("key2", 2), ("key3", 3)]
 
-        def map_func(key, value):
-            return [(key, value * 2)]
+        def map_func(data):
+            return [(key, value * 2) for key, value in data]
 
         self._test_map_task_helper(input_data, map_func)
 
@@ -47,7 +47,7 @@ class TestWorker(unittest.TestCase):
         Test that the `map_task` works correctly with a lambda function as the map function.
         """
         input_data = [("key1", 1), ("key2", 2), ("key3", 3)]
-        self._test_map_task_helper(input_data, lambda key, value: [(key, value * 2)])
+        self._test_map_task_helper(input_data, lambda data: [(key, value * 2) for key, value in data])
 
     def test_map_task_3(self):
         """
@@ -55,10 +55,11 @@ class TestWorker(unittest.TestCase):
         """
         input_data = [("key1", 1), ("key2", 2), ("key3", 3)]
 
-        def map_func(key, value):
+        def map_func(data):
             result = []
-            for i in range(value):
-                result.append((key, i * 2))
+            for key, value in data:
+                for i in range(value):
+                    result.append((key, i * 2))
             return result
 
         self._test_map_task_helper(input_data, map_func)
@@ -78,13 +79,17 @@ class TestWorker(unittest.TestCase):
         # Generate 1000 key-value pairs where the value is a random list of integers
         input_data = [(f"key{i}", random_number_list(random.randint(0, 100))) for i in range(1000)]
 
-        def map_func(key, value):
+        def map_func(data):
             """Map function that sums a list of integers and generates two additional key-value pairs."""
-            return [
-                (key, sum(value)),
-                (key, [type(value), len(value)]),
-                ([type(value), len(value)], [type(value), len(value)])
-            ]
+            result = []
+
+            for key, value in data:
+                result.extend([
+                    (key, sum(value)),
+                    (key, [type(value), len(value)]),
+                    ([type(value), len(value)], [type(value), len(value)])
+                ])
+            return result
 
         # Call the _test_map_task_helper method with the input data and mapper function
         self._test_map_task_helper(input_data, map_func)
@@ -102,7 +107,13 @@ class TestWorker(unittest.TestCase):
 
         """
         input_data = [("mike",), ("george",), ("123",)]
-        self._test_map_task_helper(input_data, lambda x: map(lambda letter: (letter, 1), x))
+
+        def map_func(data):
+            tmp_func = lambda x: map(lambda letter: (letter, 1), x)
+            result = []
+            for x in data:
+                result.extend(tmp_func(x))
+        self._test_map_task_helper(input_data, map_func)
 
     def _test_map_task_helper(self, input_data, map_func):
         """
@@ -128,7 +139,7 @@ class TestWorker(unittest.TestCase):
         output_data = args[1]
 
         # Check if the content of the output file matches the expected result
-        expected_output = [result for elem in input_data for result in map_func(*elem)]
+        expected_output = map_func(input_data)
 
         self.assertEqual(output_data, expected_output)
 
@@ -136,11 +147,12 @@ class TestWorker(unittest.TestCase):
         data = [
             ('key1', 1), ('key1', 2), ('key1', {12: '3'}), ('key1', 4), ('key1', 5), ('key1', 6), ('key1', 7),
             ('key2', 8), ('key2', 9), ('key2', 10), ('key2', {11: '5'}), ('key2', 12), ('key2', 13),
-            ('key2', 14), ('key2', [21, 22, 23, 25, 26, 27])
+            ('key2', 14), ('key2', [21, 22, 23, 25, 26, 27]), ('key6', 1)
         ]
         correct_output = [
             ('key1', [1, 2, {12: '3'}, 4, 5, 6, 7]),
-            ('key2', [8, 9, 10, {11: '5'}, 12, 13, 14, [21, 22, 23, 25, 26, 27]])
+            ('key2', [8, 9, 10, {11: '5'}, 12, 13, 14, [21, 22, 23, 25, 26, 27]]),
+            ('key6', [1])
         ]
 
         self._test_shuffle_task(data, correct_output)
@@ -155,7 +167,7 @@ class TestWorker(unittest.TestCase):
         # Check the response
         self.assertEqual(response.status_code, 200)
 
-        call_args_list = self.mock_hdfs_client.save_data.call_args_list[-2:]
+        call_args_list = self.mock_hdfs_client.save_data.call_args_list[-3:]
 
         output_data = []
         for call_args in call_args_list:
@@ -172,7 +184,7 @@ class TestWorker(unittest.TestCase):
         # Data after performing reduce with `reduce_func`
         correct_result_data = [('key1', 21)]
 
-        self._test_reduce_task_helper(input_data, lambda x, y: x+y, correct_result_data)
+        self._test_reduce_task_helper(input_data, sum, correct_result_data)
 
     def _test_reduce_task_helper(self, input_data, reduce_func, correct_result_data):
 

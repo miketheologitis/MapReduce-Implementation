@@ -1,6 +1,4 @@
-1. complete master
-
-2. general integration test.
+1. inspect concurrent.futures correct usage. Move functions hdfs_print and zoo print inside local_monitoring.
 
 4. worker down?
 
@@ -8,30 +6,5 @@
 
 6. beautiful progress in #TODO: `local_monitoring`
 
-7. multiprocessing map task:
-from multiprocessing import Pool
 
-def f(x):
-    return x*x
-
-if __name__ == '__main__':
-    with Pool(5) as p:
-        print(p.map(f, [1, 2, 3]))
-
-
-
-
-debug:
-
-1. We know we do not go inside `handle_job` ever
-2. `get_job` in watcher gets called because job is updated to in-progress
-
-
-Notes:
-
-When we submit the job the first time:
-Job(state='idle', requested_n_workers=None, master_hostname=None)
-
-When we submit the job the second time (we have two jobs, the first was assigned):
-Job(state='in-progress', requested_n_workers=None, master_hostname='2b21334204d4')
 

@@ -2,19 +2,26 @@ import time
 import pickle
 import threading
 from ..zookeeper.zookeeper_client import ZookeeperClient
+from ..hadoop.hdfs_client import HdfsClient
 
 
 class LocalMonitoring:
 
-    def __init__(self, zk_hosts):
+    def __init__(self, zk_hosts="localhost:2181,localhost:2182,localhost:2183", hdfs_host="localhost:9870"):
         self.zk_hosts = zk_hosts
+        self.hdfs_host = hdfs_host
 
-        self.zk_client = None
+        self.zk_client, self.hdfs_client = None, None
 
     def get_zk_client(self):
         if self.zk_client is None:
             self.zk_client = ZookeeperClient(self.zk_hosts)
         return self.zk_client
+
+    def get_hdfs_client(self):
+        if self.hdfs_client is None:
+            self.hdfs_client = HdfsClient(self.hdfs_host)
+        return self.hdfs_client
 
     def get_registered_masters(self):
         """

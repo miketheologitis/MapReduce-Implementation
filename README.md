@@ -13,56 +13,48 @@ we make changes to hdfs from outside the network we have a problem. Modify it.
 pip install -r requirements.txt
 ```
 
-Zookeeper:
-```bash
-docker pull zookeeper
-```
-
-Create-Scale workers:
-```bash
-docker-compose up -d --scale master=1 --scale worker=1 --no-recreate
-```
-
-```bash
-python -m unittest tests.unit_tests.test_worker
-python -m unittest tests.integration_tests.test_hdfs_client
-python -m unittest tests.integration_tests.test_zookeeper_client
-python -m unittest tests.integration_tests.test_local_cluster_local_monitoring
-python -m unittest tests.integration_tests.test_local_cluster
-```
-
-```bash
-docker-compose down
-```
-
-```bash
-docker exec -it <CONTAINERID>
-```
-
 ### Map Function
-Map Function assumes to return a list of key-value pairs for a single fed element.
-Takes as input a tuple with +1 elements `(X,)` is enough.
+
+`map([x1, x2, ...]) -> [(k1, v2), (k2, v2), ...]` 
 
 Example:
-- `f(("mike",))` -> `[('m', 1), ('i', 1), ('k', 1), ('e', 1)]`
-- `f(("george",))` -> `[('g', 1), ('e', 1), ('o', 1), ('r', 1), ('g', 1), ('e', 1)]`
-- `f(("m",))` -> `[('m', 1)]`
+```python
+def map_func(data):
+    result = []
+    for string in data:
+        for char in string:
+            result.append((char, 1))
+    return result
+```
 
-Input:
+```python
+Input: ["mike", "george", "meg"]
+Output: [('m', 1), ('i', 1), ('k', 1), ('e', 1), ('g', 1), ('e', 1), ('o', 1),
+         ('r', 1), ('g', 1), ('e', 1), ('m', 1), ('e', 1), ('g', 1)]
 ```
-[("mike",), ("george",), ("123",)]
+
+### Shuffle
+Intermediate results of the *map* function are shuffled (sorted and grouped by **key**). This operation is straightforward.
+```python
+Input: [('m', 1), ('i', 1), ('k', 1), ('e', 1), ('g', 1), ('e', 1),
+        ('o', 1), ('r', 1), ('g', 1), ('e', 1), ('m', 1)]
+Output: [('e', [1, 1, 1, 1]), ('g', [1, 1]), ('i', [1]), ('k', [1]),
+         ('m', [1, 1]), ('o', [1]), ('r', [1])]
 ```
-Result:
-```
-[('m', 1), ('i', 1), ('k', 1), ('e', 1), ('g', 1), ('e', 1),
-('o', 1), ('r', 1), ('g', 1), ('e', 1), ('1', 1), ('2', 1),
-('3', 1)]
-```
+
 
 ### Reduce Function
-Reduce function assumes `(key, value)` tuples as input and does the obvious.
+`reduce([(k1, [v1, v2, ...]), (k2, [y1, y2, ...]), ...]) -> [(k1, x1), (k2, x2), ...)]`
 
-Notice that in the map function we allow more freedom, i.e., `(X, ..., ...)`.
+```python
+def reduce_func(values):
+    return sum(values)
+```
+```python
+Input: [('e', [1, 1, 1, 1]), ('g', [1, 1]), ('i', [1]), ('k', [1]),
+         ('m', [1, 1]), ('o', [1]), ('r', [1])]
+Output: [('e', 4), ('g', 2), ('i', 1), ('k', 1), ('m', 2), ('o', 1), ('r', 1)]
+```
 
 # Current repo
 ```markdown
@@ -77,7 +69,7 @@ MapReduce-Implementation/
 │   │   └── local_monitoring.py
 │   ├── workers/
 │   │   ├── __init__.py
-│   │   ├── master.py (+)
+│   │   ├── master.py
 │   │   └── worker.py
 │   ├── zookeeper/
 │   │   ├── __init__.py
@@ -91,11 +83,10 @@ MapReduce-Implementation/
 │   │   ├── __init__.py
 │   │   ├── test_hdfs_client.py
 │   │   ├── test_zookeeper_client.py
-│   │   └── pytest_local_cluster_local_monitoring.py
+│   │   └── test_local_cluster_local_monitoring.py
 │   ├── unit_tests/
 │   │   ├── __init__.py
-│   │   ├── test_worker.py
-│   │   └── test_master.py (+)
+│   │   └── test_worker.py
 ├── examples/
 │   ├── __init__.py
 │   ├── testing.ipynb
@@ -106,4 +97,14 @@ MapReduce-Implementation/
 ├── TODO.txt
 ├── docker-compose.yaml
 ├── hadoop.env
+```
+
+### Tests
+
+```bash
+python -m unittest tests.unit_tests.test_worker
+python -m unittest tests.integration_tests.test_hdfs_client
+python -m unittest tests.integration_tests.test_zookeeper_client
+python -m unittest tests.integration_tests.test_local_cluster_local_monitoring
+python -m unittest tests.integration_tests.test_local_cluster
 ```
