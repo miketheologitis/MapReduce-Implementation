@@ -1,10 +1,10 @@
 import unittest
 import random
 from unittest.mock import patch, call, create_autospec
-from src.zookeeper.zookeeper_client import ZookeeperClient
-from src.hadoop.hdfs_client import HdfsClient
+from mapreduce.zookeeper.zookeeper_client import ZookeeperClient
+from mapreduce.hadoop.hdfs_client import HdfsClient
 from hdfs import InsecureClient
-from src.workers.worker import app, worker
+from mapreduce.workers.worker import app, worker
 
 
 class TestWorker(unittest.TestCase):

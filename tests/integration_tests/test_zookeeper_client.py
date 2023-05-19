@@ -1,7 +1,6 @@
 import unittest
 import subprocess
-import time
-from src.zookeeper.zookeeper_client import ZookeeperClient
+from mapreduce.zookeeper.zookeeper_client import ZookeeperClient
 
 
 class TestZookeeper(unittest.TestCase):

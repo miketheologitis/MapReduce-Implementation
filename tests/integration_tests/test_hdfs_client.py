@@ -1,10 +1,8 @@
 import unittest
 import subprocess
-import time
-from src.hadoop.hdfs_client import HdfsClient
+from mapreduce.hadoop.hdfs_client import HdfsClient
 from operator import itemgetter
-from itertools import groupby, chain
-from functools import reduce
+from itertools import groupby
 
 
 class TestHdfs(unittest.TestCase):

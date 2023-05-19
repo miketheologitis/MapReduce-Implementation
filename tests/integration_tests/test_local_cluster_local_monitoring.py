@@ -2,7 +2,7 @@ import time
 import unittest
 import threading
 
-from src.cluster.local_cluster import LocalCluster
+from mapreduce.cluster.local_cluster import LocalCluster
 
 
 class LocalClusterTests(unittest.TestCase):
