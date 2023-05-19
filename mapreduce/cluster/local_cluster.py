@@ -26,33 +26,6 @@ class LocalCluster:
 
     def mapreduce(self, data, map_func, reduce_func, requested_n_workers=None):
         """
-        Perform MapReduce on the local cluster. Blocks until completion.
-
-        :param data: Input data for MapReduce.
-        :param map_func: Map function.
-        :param reduce_func: Reduce function.
-        :param requested_n_workers: The number of workers requested for this job (`None` means all available)
-        """
-        hdfs_client = self.get_hdfs_client()
-        zk_client = self.get_zk_client()
-
-        job_id = zk_client.get_sequential_job_id()
-
-        hdfs_client.job_create(job_id=job_id, data=data, map_func=map_func, reduce_func=reduce_func)
-
-        zk_client.register_job(job_id=job_id, requested_n_workers=requested_n_workers)
-
-        # This is safe because we have many I/Os (zookeeper, hdfs) so the job cannot complete instantly
-        self.local_monitoring.wait_for_job_completion(job_id)
-
-        output_data = []
-        for filename in hdfs_client.hdfs.list(f'jobs/job_{job_id}/reduce_results/'):
-            output_data.extend(hdfs_client.get_data(f'jobs/job_{job_id}/reduce_results/{filename}'))
-
-        return output_data
-
-    def non_blocking_mapreduce(self, data, map_func, reduce_func, requested_n_workers=None):
-        """
         Perform MapReduce on the local cluster. Returns a Future object immediately.
 
         :param data: Input data for MapReduce.
@@ -70,21 +43,28 @@ class LocalCluster:
 
         zk_client.register_job(job_id=job_id, requested_n_workers=requested_n_workers)
 
+        # Job completion event. When it is set we know the job is complete
+        event = self.local_monitoring.job_completion_event(job_id)
+
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-        job_completion_future = executor.submit(self.wait_for_completion_and_get_results, job_id)
+        job_completion_future = executor.submit(self.wait_for_completion_and_get_results, job_id, event)
 
         return job_completion_future
 
-    def wait_for_completion_and_get_results(self, job_id):
+    def wait_for_completion_and_get_results(self, job_id, event):
         """
         Wait for the job to complete, then get the results.
 
         :param job_id: The id of the job to wait for.
+        :param event: The thread.Event() job-completion event. We wait until it is set
         :return: The results of the job.
         """
-        hdfs_client = self.get_hdfs_client()
 
-        self.local_monitoring.wait_for_job_completion(job_id)
+        while not event.is_set():
+            # TODO: print beautiful info
+            event.wait(1)
+
+        hdfs_client = self.get_hdfs_client()
 
         output_data = []
         for filename in hdfs_client.hdfs.list(f'jobs/job_{job_id}/reduce_results/'):

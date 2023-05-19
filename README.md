@@ -44,7 +44,7 @@ Output: [('e', [1, 1, 1, 1]), ('g', [1, 1]), ('i', [1]), ('k', [1]),
 
 
 ### Reduce Function
-`reduce([(k1, [v1, v2, ...]), (k2, [y1, y2, ...]), ...]) -> [(k1, x1), (k2, x2), ...)]`
+`reduce([v1, v2, ...]) -> y`
 
 ```python
 def reduce_func(values):
@@ -106,5 +106,4 @@ python -m unittest tests.unit_tests.test_worker
 python -m unittest tests.integration_tests.test_hdfs_client
 python -m unittest tests.integration_tests.test_zookeeper_client
 python -m unittest tests.integration_tests.test_local_cluster_local_monitoring
-python -m unittest tests.integration_tests.test_local_cluster
 ```

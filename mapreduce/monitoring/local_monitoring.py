@@ -43,7 +43,7 @@ class LocalMonitoring:
         n_workers_registered = len(workers_registered)
         return workers_registered, n_workers_registered
 
-    def wait_for_job_completion(self, job_id):
+    def job_completion_event(self, job_id):
         """
         Blocks until the specified job is completed.
 
@@ -77,6 +77,19 @@ class LocalMonitoring:
                 event.set()
                 return False  # stop further calls https://kazoo.readthedocs.io/_/downloads/en/2.2/pdf/ page:43
 
-        while not event.is_set():
-            # TODO: print beautiful info
-            event.wait(1)
+        return event
+
+    def print_hdfs(self, path, indent=''):
+        hdfs_client = self.get_hdfs_client()
+
+        # Retrieve the content of the path.
+        content = hdfs_client.hdfs.list(path, status=True)
+
+        # Iterate over each item.
+        for name, stats in content:
+            if stats['type'] == 'DIRECTORY':
+                print(f'{indent}{name}/')
+                # If the item is a directory, recurse.
+                self.print_hdfs(f'{path}/{name}', indent + '  ')
+            else:
+                print(f'{indent}{name}')

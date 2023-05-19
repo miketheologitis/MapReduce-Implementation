@@ -65,11 +65,9 @@ class HdfsClient:
         """
 
         self.hdfs.makedirs(f'jobs/job_{job_id}/map_tasks/')
-        self.hdfs.makedirs(f'jobs/job_{job_id}/reduce_tasks/')
         self.hdfs.makedirs(f'jobs/job_{job_id}/map_results/')
         self.hdfs.makedirs(f'jobs/job_{job_id}/shuffle_results/')
         self.hdfs.makedirs(f'jobs/job_{job_id}/reduce_results/')
-
         self.save_data(f'jobs/job_{job_id}/data.pickle', data)
         self.save_func(f'jobs/job_{job_id}/map_func.pickle', map_func)
         self.save_func(f'jobs/job_{job_id}/reduce_func.pickle', reduce_func)
