@@ -111,6 +111,9 @@ class LocalCluster:
         _ = self.get_hdfs_client()
         self.get_zk_client().setup_paths()
 
+    def hdfs_cleanup(self):
+        self.get_hdfs_client().cleanup()
+
     def shutdown_cluster(self, verbose=False, delete_hdfs_jobs=False):
         """
         Shutdown the local cluster by stopping services and cleaning up resources.

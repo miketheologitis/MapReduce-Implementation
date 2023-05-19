@@ -1,4 +1,3 @@
-import time
 import pickle
 import threading
 from ..zookeeper.zookeeper_client import ZookeeperClient
@@ -93,3 +92,41 @@ class LocalMonitoring:
                 self.print_hdfs(f'{path}/{name}', indent + '  ')
             else:
                 print(f'{indent}{name}')
+
+    def print_zoo(self):
+        zk_client = self.get_zk_client()
+
+        print()
+        print("----------------- Zoo Masters -----------------")
+        for file in zk_client.zk.get_children('/masters'):
+            print(f'Master {file} :  {zk_client.get(f"/masters/{file}")}')
+
+        print()
+
+        print("----------------- Zoo Workers -----------------")
+        for file in zk_client.zk.get_children('/workers'):
+            print(f'Worker {file} :  {zk_client.get(f"/workers/{file}")}')
+
+        print()
+
+        print("----------------- Zoo Map Tasks -----------------")
+        for file in zk_client.zk.get_children('/map_tasks'):
+            print(f'Task {file} :  {zk_client.get(f"/map_tasks/{file}")}')
+
+        print()
+
+        print("----------------- Zoo Shuffle Tasks -----------------")
+        for file in zk_client.zk.get_children('/shuffle_tasks'):
+            print(f'Task {file} :  {zk_client.get(f"/shuffle_tasks/{file}")}')
+
+        print()
+
+        print("----------------- Zoo Reduce Tasks -----------------")
+        for file in zk_client.zk.get_children('/reduce_tasks'):
+            print(f'Task {file} :  {zk_client.get(f"/reduce_tasks/{file}")}')
+
+        print()
+
+        print("----------------- Zoo Jobs ---------------------")
+        for file in zk_client.zk.get_children('/jobs'):
+            print(f'Job {file} :  {zk_client.get(f"/jobs/{file}")}')
