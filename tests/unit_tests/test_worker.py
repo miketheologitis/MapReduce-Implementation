@@ -167,7 +167,7 @@ class TestWorker(unittest.TestCase):
         # Check the response
         self.assertEqual(response.status_code, 200)
 
-        call_args_list = self.mock_hdfs_client.save_data.call_args_list[-2:]
+        call_args_list = self.mock_hdfs_client.save_data.call_args_list[-3:]
 
         output_data = []
         for call_args in call_args_list:
