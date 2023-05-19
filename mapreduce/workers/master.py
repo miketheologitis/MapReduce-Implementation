@@ -31,6 +31,8 @@ class Master:
         self.zk_client = None
         self.hdfs_client = None
 
+        self.registered_workers = set()  # set of registered workers (hostnames) at any point in time
+
     def get_zk_client(self):
         if self.zk_client is None:
             self.zk_client = ZookeeperClient(ZK_HOSTS)
@@ -55,6 +57,7 @@ class Master:
 
         # Continuously ask Zookeeper for idle workers until we have enough.
         while not idle_assigned_workers:
+            # Get the list of idle workers from Zookeeper with distributed Lock
             idle_assigned_workers = zk_client.get_workers_for_tasks(requested_n_workers)
             if not idle_assigned_workers:
                 time.sleep(3)
@@ -110,8 +113,7 @@ class Master:
         zk_client = self.get_zk_client()
 
         # Polls zookeeper for workers. Blocks until one worker is assigned to this master.
-        assigned_worker = self.get_idle_workers(requested_n_workers=1)
-        assigned_worker_hostname = assigned_worker[0]
+        assigned_worker_hostname = self.get_idle_workers(requested_n_workers=1)[0]
 
         # Register the shuffle task to zookeeper
         zk_client.register_task(
@@ -203,6 +205,74 @@ class Master:
         # 4. Mark Job completed
         self.get_zk_client().update_job(job_id=job_id, state='completed')
 
+    def handle_dead_worker_task(self, task_filename, task_type):
+        """
+        Given the fact that we have 'map', 'shuffle', 'reduce' tasks, and the fact that the
+        information of job_id, task_id, etc. lies in:
+
+        'map' : filename = f'/map_tasks/{job_id}_{task_id}'
+        'shuffle' : filename = f'/shuffle_tasks/{job_id}'
+        'reduce' : filename =  f'/reduce_tasks/{job_id}_{suffix_id}' where `shuffix_id` is
+                               '_'.join(map(str, task_id)) of the shuffle tasks that this reduce task reduces.
+
+        We can uniquely identify the task type by looking at the filename.
+
+        :param task_filename: The filename of the task in Zookeeper
+        :param task_type: The type of the task (map, shuffle, reduce)
+        """
+        zk_client = self.get_zk_client()
+
+        # Polls zookeeper for workers. Blocks until one worker is assigned to this master.
+        assigned_worker_hostname = self.get_idle_workers(requested_n_workers=1)[0]
+
+        if task_type == 'map':
+            # Convert the filename to the job_id, task_id (integer)
+            job_id, task_id = list(map(int, task_filename.split('_')))
+
+            # Update the task in Zookeeper (to the new worker)
+            zk_client.update_task('map', job_id, task_id, worker_hostname=assigned_worker_hostname)
+
+            # send async request to the worker
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                executor.submit(
+                    lambda: requests.post(
+                        f'http://{assigned_worker_hostname}:5000/map-task',
+                        json={'job_id': job_id, 'task_id': task_id}
+                    )
+                )
+
+        if task_type == 'reduce':
+            # Convert the filename to the job_id, task_ids (integer)
+            job_id, *task_ids = list(map(int, task_filename.split('_')))
+
+            # Update the task in Zookeeper (to the new worker)
+            zk_client.update_task('reduce', job_id, task_ids, worker_hostname=assigned_worker_hostname)
+
+            # send async request to the worker
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                executor.submit(
+                    lambda: requests.post(
+                        f'http://{assigned_worker_hostname}:5000/reduce-task',
+                        json={'job_id': job_id, 'task_ids': task_ids}
+                    )
+                )
+
+        if task_type == 'shuffle':
+            # Convert the filename to the job_id
+            job_id = int(task_filename)
+
+            # Update the task in Zookeeper (to the new worker)
+            zk_client.update_task('shuffle', job_id, worker_hostname=assigned_worker_hostname)
+
+            # send async request to the worker
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                executor.submit(
+                    lambda: requests.post(
+                        f'http://{assigned_worker_hostname}:5000/shuffle-task',
+                        json={'job_id': job_id}
+                    )
+                )
+
     def map_completion_event(self, job_id, n_tasks):
         """
         Blocks until the specified job is completed.
@@ -251,7 +321,7 @@ class Master:
 
             if task.state == 'completed':
                 event.set()
-                return False
+                return False  # stop watching
         return event
 
     def reduce_completion_event(self, job_id, list_tasks):
@@ -288,7 +358,7 @@ class Master:
                     # Check if all tasks are completed
                     if completed_tasks == n_tasks:
                         event.set()
-                    return False
+                    return False  # stop watching
         return event
 
     def new_job_watcher(self):
@@ -315,6 +385,39 @@ class Master:
                 job_thread = threading.Thread(target=self.handle_job, args=(job_id, requested_n_workers))
                 job_thread.start()
 
+    def dead_workers_watcher(self):
+        """
+        Sets up a watcher on the /workers path in Zookeeper. When a worker dies the ephemeral node at that path
+        will be deleted and the watcher will be triggered. The callback function will then be called and a master
+        must find whether the worker left any incomplete ('in-progress') tasks and reassign them.
+        """
+        zk_client = self.get_zk_client()
+
+        @zk_client.zk.ChildrenWatch('/workers')
+        def callback(children):
+            # The callback function is called when the children of the watched znode change.
+            # children is a list of the names of the children of jobs_path.
+
+            children_set = set(children)
+
+            # Find the dead workers. Set of dead worker hostnames
+            dead_workers = self.registered_workers - children_set
+
+            # Update the registered workers
+            self.registered_workers = children_set
+
+            if dead_workers:
+                # if there are dead workers, reassign their tasks
+                for dead_worker in dead_workers:
+                    task_filename, task_type = zk_client.get_dead_worker_task(dead_worker)
+
+                    if task_filename is not None:
+                        # Start a new thread to handle the task
+                        dead_worker_task_thread = threading.Thread(
+                            target=self.handle_dead_worker_task, args=(task_filename, task_type)
+                        )
+                        dead_worker_task_thread.start()
+
     @staticmethod
     def split_data(data, n):
         """
@@ -336,7 +439,7 @@ class Master:
         zk_client = self.get_zk_client()
         zk_client.register_master(HOSTNAME)
         self.new_job_watcher()
-        # TODO: setup_dead_worker_watcher()
+        self.dead_workers_watcher()
         app.run(host='0.0.0.0', port=5000)
 
 

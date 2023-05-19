@@ -1,4 +1,3 @@
-import time
 import pickle
 import threading
 from ..zookeeper.zookeeper_client import ZookeeperClient
@@ -43,7 +42,7 @@ class LocalMonitoring:
         n_workers_registered = len(workers_registered)
         return workers_registered, n_workers_registered
 
-    def wait_for_job_completion(self, job_id):
+    def job_completion_event(self, job_id):
         """
         Blocks until the specified job is completed.
 
@@ -77,6 +76,57 @@ class LocalMonitoring:
                 event.set()
                 return False  # stop further calls https://kazoo.readthedocs.io/_/downloads/en/2.2/pdf/ page:43
 
-        while not event.is_set():
-            # TODO: print beautiful info
-            event.wait(1)
+        return event
+
+    def print_hdfs(self, path, indent=''):
+        hdfs_client = self.get_hdfs_client()
+
+        # Retrieve the content of the path.
+        content = hdfs_client.hdfs.list(path, status=True)
+
+        # Iterate over each item.
+        for name, stats in content:
+            if stats['type'] == 'DIRECTORY':
+                print(f'{indent}{name}/')
+                # If the item is a directory, recurse.
+                self.print_hdfs(f'{path}/{name}', indent + '  ')
+            else:
+                print(f'{indent}{name}')
+
+    def print_zoo(self):
+        zk_client = self.get_zk_client()
+
+        print()
+        print("----------------- Zoo Masters -----------------")
+        for file in zk_client.zk.get_children('/masters'):
+            print(f'Master {file} :  {zk_client.get(f"/masters/{file}")}')
+
+        print()
+
+        print("----------------- Zoo Workers -----------------")
+        for file in zk_client.zk.get_children('/workers'):
+            print(f'Worker {file} :  {zk_client.get(f"/workers/{file}")}')
+
+        print()
+
+        print("----------------- Zoo Map Tasks -----------------")
+        for file in zk_client.zk.get_children('/map_tasks'):
+            print(f'Task {file} :  {zk_client.get(f"/map_tasks/{file}")}')
+
+        print()
+
+        print("----------------- Zoo Shuffle Tasks -----------------")
+        for file in zk_client.zk.get_children('/shuffle_tasks'):
+            print(f'Task {file} :  {zk_client.get(f"/shuffle_tasks/{file}")}')
+
+        print()
+
+        print("----------------- Zoo Reduce Tasks -----------------")
+        for file in zk_client.zk.get_children('/reduce_tasks'):
+            print(f'Task {file} :  {zk_client.get(f"/reduce_tasks/{file}")}')
+
+        print()
+
+        print("----------------- Zoo Jobs ---------------------")
+        for file in zk_client.zk.get_children('/jobs'):
+            print(f'Job {file} :  {zk_client.get(f"/jobs/{file}")}')

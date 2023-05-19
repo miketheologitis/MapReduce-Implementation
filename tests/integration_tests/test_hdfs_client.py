@@ -109,7 +109,6 @@ class TestHdfs(unittest.TestCase):
     def _test_job_create(self, job_id):
         # Assert that the directories were created in HDFS
         self.assertTrue(self.hdfs_client.hdfs.status(f"jobs/job_{job_id}/map_tasks"))
-        self.assertTrue(self.hdfs_client.hdfs.status(f"jobs/job_{job_id}/reduce_tasks"))
         self.assertTrue(self.hdfs_client.hdfs.status(f"jobs/job_{job_id}/map_results"))
         self.assertTrue(self.hdfs_client.hdfs.status(f"jobs/job_{job_id}/shuffle_results"))
         self.assertTrue(self.hdfs_client.hdfs.status(f"jobs/job_{job_id}/reduce_results"))

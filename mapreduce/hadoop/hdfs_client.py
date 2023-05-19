@@ -65,24 +65,22 @@ class HdfsClient:
         """
 
         self.hdfs.makedirs(f'jobs/job_{job_id}/map_tasks/')
-        self.hdfs.makedirs(f'jobs/job_{job_id}/reduce_tasks/')
         self.hdfs.makedirs(f'jobs/job_{job_id}/map_results/')
         self.hdfs.makedirs(f'jobs/job_{job_id}/shuffle_results/')
         self.hdfs.makedirs(f'jobs/job_{job_id}/reduce_results/')
-
         self.save_data(f'jobs/job_{job_id}/data.pickle', data)
         self.save_func(f'jobs/job_{job_id}/map_func.pickle', map_func)
         self.save_func(f'jobs/job_{job_id}/reduce_func.pickle', reduce_func)
 
     def save_data(self, hdfs_path, data):
         """
-        Serialize and save data to HDFS.
+        Serialize and save data to HDFS. Overwrite if already exists (should never happen).
 
         :param hdfs_path: The HDFS path to save the data.
         :param data: The data to be saved.
         """
         pickled_data = pickle.dumps(data)
-        self.hdfs.write(hdfs_path, data=pickled_data)
+        self.hdfs.write(hdfs_path, data=pickled_data, overwrite=True)
 
     def save_func(self, hdfs_path, func):
         """
