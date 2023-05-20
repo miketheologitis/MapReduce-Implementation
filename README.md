@@ -106,12 +106,12 @@ MapReduce-Implementation/
 
 ### Distributed System Architecture
 
-We set up a docker-compose network with workers, masters, zookeeper and hdfs. The requirement of the system is that
+We set up a docker-compose network with *workers*, *masters*, *zookeeper* and *hdfs*. The requirement of the system is that
 we can externally talk with hdfs and zookeeper. The rest of the components are internal to the docker-compose network.
 
 ### Fault Tolerance
 
-The system is fault-tolerant in the following ways:
+We guarantee fault tolerance for the following scenarios, if at least one *master* service is alive:
 - *Worker* failures at any time.
 - *Master* failures at any time.
 

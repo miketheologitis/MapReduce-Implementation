@@ -347,3 +347,17 @@ class ZookeeperClient:
         """
         serialized_data, _ = self.zk.get(path)
         return pickle.loads(serialized_data)
+
+    def clear(self):
+        """
+        Clears the ZooKeeper state. Be careful when using this method as it will delete all the data stored in ZooKeeper.
+        You can use it to reset the state of the distributed system when paired with the `clear` method of hdfs.
+        You have to make sure that all jobs are completed before calling this method. We leave it up to the user to
+        ensure that the system is in a consistent state before calling this method.
+        """
+        nodes = ["jobs", "map_tasks", "shuffle_tasks", "reduce_tasks", "generators"]
+
+        for node in nodes:
+            for child in self.zk.get_children(f'/{node}'):
+                self.zk.delete(f'/{node}/{child}')
+

@@ -118,6 +118,20 @@ class HdfsClient:
         func = dill.loads(serialized_func)
         return func
 
+    def job_exists(self, job_id):
+        """ Check if a job exists in HDFS. Returns True if it exists, False otherwise. """
+        return self.hdfs.status(f'jobs/job_{job_id}', strict=False) is not None
+
+    def clear(self):
+        """
+        Delete all the jobs from HDFS. Be careful when using this method as it will delete all the data stored in HDFS.
+        You can use it to reset the state of the distributed system when paired with the `clear` method of Zookeeper.
+        You have to make sure that all jobs are completed before calling this method. We leave it up to the user to
+        ensure that the system is in a consistent state before calling this method.
+        """
+        for job_dir in self.hdfs.list('jobs'):
+            self.hdfs.delete(f'jobs/{job_dir}', recursive=True)
+
     def cleanup(self):
         """ Delete `jobs` directory completely with everything inside """
         self.hdfs.delete('jobs', recursive=True)
