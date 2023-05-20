@@ -1,3 +1,7 @@
+1. hdfs_clear , zk_clear on the fly on jupyter notebook
+
+2. unittest for zookeeper_client for new funcs.
+
 1. local_cluster.shutdown_cluster(delete_hdfs_jobs=True) rename ugly name `delete_hdfs_jobs`
 to `clean_hdfs`
 

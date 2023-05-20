@@ -20,7 +20,7 @@ kazoo_logger.setLevel(logging.ERROR)
 │   ├── <HOSTNAME>      (created by `master` on register `ephemeral`)
 │   ├── ...
 ├── jobs/
-│   ├── <HOSTNAME>  `master` hostname. (created by `user`)
+│   ├── <job_id>  `master` hostname. (created by `user`)
 ├── map_tasks/      (created by `user` `not ephemeral`)
 │   ├── <job_id>_<task_id>   
 ├── shuffle_tasks/      (created by `user` `not ephemeral`)
@@ -32,6 +32,7 @@ kazoo_logger.setLevel(logging.ERROR)
 ├── locks/  (created by `user` `not ephemeral`)
 │   ├── get_workers_for_tasks_lock
 │   ├── master_job_assignment_lock
+│   ├── dead_worker_task_lock
 """
 
 

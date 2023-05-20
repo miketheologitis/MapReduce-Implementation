@@ -390,6 +390,11 @@ class Master:
         Sets up a watcher on the /workers path in Zookeeper. When a worker dies the ephemeral node at that path
         will be deleted and the watcher will be triggered. The callback function will then be called and a master
         must find whether the worker left any incomplete ('in-progress') tasks and reassign them.
+
+        Remember that the callback function is called the first time the watcher is set up, so the
+        `self.registered_workers` are updated with the current workers. We rely on the guarantee that the
+        ephemeral nodes are deleted when the worker dies, hence on the first call we indeed have the current
+        workers in the distributed system.
         """
         zk_client = self.get_zk_client()
 

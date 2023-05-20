@@ -1,17 +1,22 @@
-# Usage
+## Pre-requisites
 
-Modify `/etc/hosts`, add the following:
+For `LocalCluster` to work modify `/etc/hosts`, add the following:
 ```
 127.0.0.1       datanode
 ```
-This is needed because the hadoop namenode (that we talk to add files to hdfs) returns
+We do this because the hadoop *namenode* (that we talk to add files to hdfs) returns
 the hostname of the datanode (i.e., `datanode`) but this returned hostname is inside the docker-compose
-network. Everything is ok when we make the requests from inside the docker-compose network, but when 
-we make changes to hdfs from outside the network we have a problem. Modify it.
+network.
 
 ```bash
 pip install -r requirements.txt
 ```
+
+## Usage
+
+Go to the `examples` folder and familiarize yourself with the API by running the notebooks.
+
+## MapReduce
 
 ### Map Function
 
@@ -56,10 +61,10 @@ Input: [('e', [1, 1, 1, 1]), ('g', [1, 1]), ('i', [1]), ('k', [1]),
 Output: [('e', 4), ('g', 2), ('i', 1), ('k', 1), ('m', 2), ('o', 1), ('r', 1)]
 ```
 
-# Current repo
+## Repository Structure
 ```markdown
 MapReduce-Implementation/
-├── src/
+├── mapreduce/
 │   ├── __init__.py
 │   ├── cluster/
 │   │   ├── __init__.py
@@ -96,8 +101,19 @@ MapReduce-Implementation/
 ├── Dockerfile.master
 ├── TODO.txt
 ├── docker-compose.yaml
-├── hadoop.env
+└── hadoop.env
 ```
+
+### Distributed System Architecture
+
+We set up a docker-compose network with workers, masters, zookeeper and hdfs. The requirement of the system is that
+we can externally talk with hdfs and zookeeper. The rest of the components are internal to the docker-compose network.
+
+### Fault Tolerance
+
+The system is fault-tolerant in the following ways:
+- *Worker* failures at any time.
+- *Master* failures at any time.
 
 ### Tests
 
