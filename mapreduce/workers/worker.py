@@ -49,6 +49,9 @@ class Worker:
         hdfs_client = self.get_hdfs_client()
         zk_client = self.get_zk_client()
 
+        # Confirm that we received the task
+        zk_client.update_task('map', job_id=job_id, task_id=task_id, received=True)
+
         # Retrieve the data/func for this task from HDFS (using `job_id` and `task_id`)
         data = hdfs_client.get_data(f'jobs/job_{job_id}/map_tasks/{task_id}.pickle')
         map_func = hdfs_client.get_func(f'jobs/job_{job_id}/map_func.pickle')
@@ -103,6 +106,9 @@ class Worker:
         hdfs_client = self.get_hdfs_client()
         zk_client = self.get_zk_client()
 
+        # Confirm that we received the task
+        zk_client.update_task('shuffle', job_id=job_id, received=True)
+
         # Retrieve data from map_results directory
         data = []
         for file in hdfs_client.hdfs.list(f'jobs/job_{job_id}/map_results'):
@@ -139,6 +145,9 @@ class Worker:
 
         hdfs_client = self.get_hdfs_client()
         zk_client = self.get_zk_client()
+
+        # Confirm that we received the task
+        zk_client.update_task('reduce', job_id=job_id, task_id=task_ids, received=True)
 
         data = []
         for task_id in task_ids:

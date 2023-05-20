@@ -108,29 +108,45 @@ class LocalCluster:
             stderr=subprocess.DEVNULL if not verbose else None
         )
 
-        _ = self.get_hdfs_client()
-        self.get_zk_client().setup_paths()
+        hdfs_client = self.get_hdfs_client()
+        zk_client = self.get_zk_client()
 
-    def hdfs_cleanup(self):
-        """
-        Delete and not persist in the `volume` the finished jobs in HDFS
-        """
-        self.get_hdfs_client().cleanup()
+        zk_client.setup_paths()
 
-    def shutdown_cluster(self, verbose=False, delete_hdfs_jobs=False):
+        # Because we do not persist jobs in ZooKeeper, we need to know the number of persisted jobs in HDFS
+        # to set the first job id in ZooKeeper correctly (so that we do not have job id collisions).
+        # After we set this up, the job ids from ZooKeeper will be sequential and unique.
+        num_persisted_jobs = len(hdfs_client.hdfs.list('jobs/'))
+        zk_client.setup_first_job_id(num_persisted_jobs)
+
+    def clear(self):
+        """
+        Clear the local cluster by deleting all job-related data in ZooKeeper and HDFS. We leave it up to the user
+        to make sure that no jobs are running when calling this method and the distributed system is in a consistent
+        state before calling this method.
+        """
+
+        zk_client = self.get_zk_client()
+        hdfs_client = self.get_hdfs_client()
+
+        zk_client.clear()
+        hdfs_client.clear()
+
+    def shutdown_cluster(self, verbose=False, cleanup=False):
         """
         Shutdown the local cluster by stopping services and cleaning up resources.
 
         :param verbose: Whether to print verbose output.
-        :param delete_hdfs_jobs: Whether to delete and not persist in the `volume` the finished jobs in HDFS
+        :param cleanup: Whether to delete and not persist in the `volume` the finished jobs in HDFS
         """
         zk_client = self.get_zk_client()
+        hdfs_client = self.get_hdfs_client()
+
+        if cleanup:
+            hdfs_client.cleanup()
+
         zk_client.zk.stop()
         zk_client.zk.close()
-
-        hdfs_client = self.get_hdfs_client()
-        if delete_hdfs_jobs:
-            hdfs_client.cleanup()
 
         subprocess.run(
             ['docker-compose', 'down'],

@@ -20,7 +20,7 @@ kazoo_logger.setLevel(logging.ERROR)
 │   ├── <HOSTNAME>      (created by `master` on register `ephemeral`)
 │   ├── ...
 ├── jobs/
-│   ├── <HOSTNAME>  `master` hostname. (created by `user`)
+│   ├── <job_id>  `master` hostname. (created by `user`)
 ├── map_tasks/      (created by `user` `not ephemeral`)
 │   ├── <job_id>_<task_id>   
 ├── shuffle_tasks/      (created by `user` `not ephemeral`)
@@ -32,6 +32,7 @@ kazoo_logger.setLevel(logging.ERROR)
 ├── locks/  (created by `user` `not ephemeral`)
 │   ├── get_workers_for_tasks_lock
 │   ├── master_job_assignment_lock
+│   ├── dead_worker_task_lock
 """
 
 
@@ -61,9 +62,11 @@ class Task(NamedTuple):
     """
     :param worker_hostname: Worker hostname that runs the task.
     :param state: Task state ('in-progress', 'completed').
+    :param received: True if the worker has received the task. Will help us in case of master failure
     """
     state: str
     worker_hostname: str
+    received: bool = False
 
 
 class ZookeeperClient:
@@ -123,7 +126,7 @@ class ZookeeperClient:
         :param job_id: Unique job ID.
         :param state: 'in-progress'
         :param worker_hostname: The worker that got assigned this task (hostname)
-        :param task_id: Task ID (optional for 'map' and 'shuffle' tasks).
+        :param task_id: Task ID
         """
         task = Task(state=state, worker_hostname=worker_hostname)
         serialized_task = pickle.dumps(task)
@@ -318,6 +321,101 @@ class ZookeeperClient:
 
             return None, None
 
+    def investigate_job_of_dead_master(self, job_id):
+        """
+        Given the fact that the master that was handling this job is dead, and the fact that the job with the provided
+        job_id is in-progress, this method returns the needed information to resume the job. There are five scenarios:
+
+        1. The master died before the map phase started. Alias: 'before-map'
+        2. The master died during the map phase. Alias: 'during-map'
+        3. The master died before the shuffle phase started. Alias: 'before-shuffle'
+        4. The master died during the shuffle phase. Alias: 'during-shuffle'
+        5. The master died before the reduce phase started. Alias: 'before-reduce'
+        6. The master died during the reduce phase. Alias: 'during-reduce'
+        7. The master died after the reduce phase and before marking the job as completed. Alias: 'before-completion'
+
+        For most of these scenarios there is a catch lurking around the corner. Let's take the 2. scenario as an example.
+        We know we are at 2. if a map task that corresponds to this job_id is 'in-progress'. However, we don't know
+        if the master died before sending the POST request. Hence, we will need to examine the Task.task_received
+        attribute for each such task.
+
+        :param job_id: The job ID of the job that was being handled by the dead master. Integer!
+        """
+        scenario = None
+
+        job_map_tasks = []
+        # We first iterate over all the map tasks. Reminder: The filename of a map task is of the form
+        # <job_id>_<task_id>  where <job_id> is the job ID and <task_id> is the task ID.
+        for task_file in self.zk.get_children('/map_tasks'):
+
+            # Extract the job ID and task ID from the filename
+            task_job_id, _ = map(int, task_file.split('_'))
+
+            if task_job_id == job_id:
+                # Get the task from ZooKeeper
+                task = self.get(f'/map_tasks/{task_file}')
+
+                job_map_tasks.append(task)
+
+                # If any of the map tasks is 'in-progress' it means that the master died during the map phase
+                if task.state == 'in-progress':
+                    # The master died during the map phase
+                    scenario = 'during-map'
+
+        # If the job_map_tasks list is empty it means that the master died before the map phase started
+        if not job_map_tasks:
+            return {'scenario': 'before-map'}
+
+        # If the master died during the map stage we return the scenario and the list of map tasks
+        if scenario == 'during-map':
+            return {'scenario': scenario, 'map_tasks': job_map_tasks}
+
+        # We now check the shuffle task. Reminder: For each job there is only one shuffle task with filename <job_id>.
+        if self.zk.exists(f'/shuffle_tasks/{job_id}'):
+            # Get the shuffle task from ZooKeeper
+            shuffle_task = self.get(f'/shuffle_tasks/{job_id}')
+
+            if shuffle_task.state == 'in-progress':
+                # The master died during the shuffle phase
+                scenario = 'during-shuffle'
+
+                return {'scenario': scenario, 'shuffle_task': shuffle_task}
+        else:
+            # The master died before the shuffle phase started
+            scenario = 'before-shuffle'
+
+            return {'scenario': scenario}
+
+        job_reduce_tasks = []
+        # We now check the reduce tasks. Reminder: The filename of a reduce task is of the form
+        # <job_id>_<task_id1>_<task_id1>...
+        for task_file in self.zk.get_children('/reduce_tasks'):
+            # Extract the job ID and task IDs from the filename
+            task_job_id, *_ = map(int, task_file.split('_'))
+
+            if task_job_id == job_id:
+                # Get the task from ZooKeeper
+                task = self.get(f'/reduce_tasks/{task_file}')
+
+                job_reduce_tasks.append(task)
+
+                # If any of the reduce tasks is 'in-progress' it means that the master died during the reduce phase
+                if task.state == 'in-progress':
+                    # The master died during the reduce phase
+                    scenario = 'during-reduce'
+
+        # If the job_reduce_tasks list is empty it means that the master died before the reduce phase started
+        if not job_reduce_tasks:
+            return {'scenario': 'before-reduce'}
+
+        if scenario == 'during-reduce':
+            return {'scenario': scenario, 'reduce_tasks': job_reduce_tasks}
+
+        # If we reach this point it means that the master died after the reduce phase and before marking the job as
+        # completed. Remember that we entered this method because the job was in-progress. Hence, the job is not
+        # completed. Therefore, the master died before marking the job as completed.
+        return {'scenario': 'before-completion'}
+
     def get_sequential_job_id(self):
         """
         Gets a sequential integer from ZooKeeper. ZooKeeper will ensure that the sequential IDs are unique and ordered
@@ -337,6 +435,13 @@ class ZookeeperClient:
         # Convert the sequential number to an integer and return it
         return int(sequential_number)
 
+    def setup_first_job_id(self, num_persisted_jobs):
+        """ HDFS persists jobs, so we need to make sure that the first job id is greater than the number of persisted
+        jobs. Hence, we call this method when we start the distributed system.
+        """
+        for i in range(num_persisted_jobs):
+            _ = self.get_sequential_job_id()
+
     def get(self, path):
         """
         Retrieves the data stored at the specified path in ZooKeeper.
@@ -346,3 +451,17 @@ class ZookeeperClient:
         """
         serialized_data, _ = self.zk.get(path)
         return pickle.loads(serialized_data)
+
+    def clear(self):
+        """
+        Clears the ZooKeeper state. Be careful when using this method as it will delete all the data stored in ZooKeeper.
+        You can use it to reset the state of the distributed system when paired with the `clear` method of hdfs.
+        You have to make sure that all jobs are completed before calling this method. We leave it up to the user to
+        ensure that the system is in a consistent state before calling this method.
+        """
+        nodes = ["jobs", "map_tasks", "shuffle_tasks", "reduce_tasks"]
+
+        for node in nodes:
+            for child in self.zk.get_children(f'/{node}'):
+                self.zk.delete(f'/{node}/{child}')
+
