@@ -101,9 +101,10 @@ class TestZookeeper(unittest.TestCase):
     def test_update_worker(self):
         """Test case to update worker information in ZooKeeper and verify the updates."""
         self.zk_client.register_worker('worker99')
-        self.zk_client.update_worker('worker99', state='in-task')
+        self.zk_client.update_worker('worker99', state='in-task', task_received=False)
 
         self.assertTrue(self.zk_client.get('/workers/worker99').state == 'in-task')
+        self.assertFalse(self.zk_client.get('/workers/worker99').task_received)
 
     def test_sequential_job_id(self):
         """Test case to verify the sequential job ID generation in ZooKeeper."""
@@ -128,6 +129,7 @@ class TestZookeeper(unittest.TestCase):
         # Assert that ZooKeeper made them 'in-task'
         for worker in workers:
             self.assertTrue(self.zk_client.get(f'/workers/{worker}').state == 'in-task')
+            self.assertFalse(self.zk_client.get(f'/workers/{worker}').task_received)
 
     def test_single_worker_bug(self):
         # Make all workers' state 'idle'

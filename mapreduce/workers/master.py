@@ -282,18 +282,21 @@ class Master:
         """
         zk_client = self.get_zk_client()
         event = threading.Event()
-        lock = threading.Lock()
+        lock = threading.Lock()  # lock to protect the counter
         completed_tasks = 0  # counter to keep track of completed tasks
 
         for i in range(n_tasks):
             task_path = f'/map_tasks/{job_id}_{i}'
 
+            # Notice that the following callback uses @DataWatch which will be called the first time it is set up.
+            # Hence, even if the map tasks have already been completed, the event will be set, and it will not block.
             @zk_client.zk.DataWatch(task_path)
             def callback(data, stat):
-                # The callback function is called when the data at the watched znode changes.
+                # The callback function is called when the data at the watched z-node changes.
                 task = pickle.loads(data)
 
                 if task.state == 'completed':
+                    # Increment the counter with lock
                     with lock:
                         nonlocal completed_tasks  # declare the variable as nonlocal to modify it
                         completed_tasks += 1
