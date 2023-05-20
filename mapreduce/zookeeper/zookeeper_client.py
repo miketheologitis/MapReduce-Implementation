@@ -41,7 +41,6 @@ class WorkerInfo(NamedTuple):
     :param state: Task state ('idle', 'in-task').
     """
     state: str = 'idle'  # 'idle', 'in-task'
-    task_received: bool = False  # True if the worker has received a task (this flag helps us on master failure)
 
 
 class Job(NamedTuple):
@@ -63,9 +62,11 @@ class Task(NamedTuple):
     """
     :param worker_hostname: Worker hostname that runs the task.
     :param state: Task state ('in-progress', 'completed').
+    :param received: True if the worker has received the task. Will help us in case of master failure
     """
     state: str
     worker_hostname: str
+    received: bool = False
 
 
 class ZookeeperClient:
@@ -238,8 +239,8 @@ class ZookeeperClient:
                 worker_info = self.get(worker_path)
 
                 if worker_info.state == 'idle':
-                    # Update the worker state to 'in-task' and set task_received to False
-                    self.update_worker(hostname, state='in-task', task_received=False)
+                    # Update the worker state to 'in-task'
+                    self.update_worker(hostname, state='in-task')
 
                     # Add the worker hostname to the list of idle workers
                     idle_workers.append(hostname)

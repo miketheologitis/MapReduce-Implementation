@@ -43,14 +43,14 @@ class Worker:
 
         :return: status `ok`
         """
+        req_data = request.get_json()
+        job_id, task_id = req_data['job_id'], req_data['task_id']
+
         hdfs_client = self.get_hdfs_client()
         zk_client = self.get_zk_client()
 
-        # Confirm that the state of this worker is 'in-task' (has received the task)
-        zk_client.update_worker(HOSTNAME, task_received=True)
-
-        req_data = request.get_json()
-        job_id, task_id = req_data['job_id'], req_data['task_id']
+        # Confirm that we received the task
+        zk_client.update_task('map', job_id=job_id, task_id=task_id, received=True)
 
         # Retrieve the data/func for this task from HDFS (using `job_id` and `task_id`)
         data = hdfs_client.get_data(f'jobs/job_{job_id}/map_tasks/{task_id}.pickle')
@@ -101,13 +101,13 @@ class Worker:
                 values = [item[1] for item in group]
                 yield key, values
 
+        job_id = request.get_json()['job_id']
+
         hdfs_client = self.get_hdfs_client()
         zk_client = self.get_zk_client()
 
-        # Confirm that the state of this worker is 'in-task' (has received the task)
-        zk_client.update_worker(HOSTNAME, task_received=True)
-
-        job_id = request.get_json()['job_id']
+        # Confirm that we received the task
+        zk_client.update_task('shuffle', job_id=job_id, received=True)
 
         # Retrieve data from map_results directory
         data = []
@@ -140,14 +140,14 @@ class Worker:
 
         :return: status `ok`
         """
+        req_data = request.get_json()
+        job_id, task_ids = req_data['job_id'], req_data['task_ids']
+
         hdfs_client = self.get_hdfs_client()
         zk_client = self.get_zk_client()
 
-        # Confirm that the state of this worker is 'in-task' (has received the task)
-        zk_client.update_worker(HOSTNAME, task_received=True)
-
-        req_data = request.get_json()
-        job_id, task_ids = req_data['job_id'], req_data['task_ids']
+        # Confirm that we received the task
+        zk_client.update_task('reduce', job_id=job_id, task_id=task_ids, received=True)
 
         data = []
         for task_id in task_ids:
