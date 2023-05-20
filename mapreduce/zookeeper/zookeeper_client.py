@@ -126,7 +126,7 @@ class ZookeeperClient:
         :param job_id: Unique job ID.
         :param state: 'in-progress'
         :param worker_hostname: The worker that got assigned this task (hostname)
-        :param task_id: Task ID (optional for 'map' and 'shuffle' tasks).
+        :param task_id: Task ID
         """
         task = Task(state=state, worker_hostname=worker_hostname)
         serialized_task = pickle.dumps(task)
@@ -416,9 +416,6 @@ class ZookeeperClient:
         # completed. Therefore, the master died before marking the job as completed.
         return {'scenario': 'before-completion'}
 
-
-
-
     def get_sequential_job_id(self):
         """
         Gets a sequential integer from ZooKeeper. ZooKeeper will ensure that the sequential IDs are unique and ordered
@@ -462,7 +459,7 @@ class ZookeeperClient:
         You have to make sure that all jobs are completed before calling this method. We leave it up to the user to
         ensure that the system is in a consistent state before calling this method.
         """
-        nodes = ["jobs", "map_tasks", "shuffle_tasks", "reduce_tasks", "generators"]
+        nodes = ["jobs", "map_tasks", "shuffle_tasks", "reduce_tasks"]
 
         for node in nodes:
             for child in self.zk.get_children(f'/{node}'):
