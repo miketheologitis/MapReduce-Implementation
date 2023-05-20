@@ -338,6 +338,13 @@ class ZookeeperClient:
         # Convert the sequential number to an integer and return it
         return int(sequential_number)
 
+    def setup_first_job_id(self, num_persisted_jobs):
+        """ HDFS persists jobs so we need to make sure that the first job id is greater than the number of persisted
+        jobs. Hence, we call this method when we start the distributed system.
+        """
+        for i in range(num_persisted_jobs):
+            _ = self.get_sequential_job_id()
+
     def get(self, path):
         """
         Retrieves the data stored at the specified path in ZooKeeper.

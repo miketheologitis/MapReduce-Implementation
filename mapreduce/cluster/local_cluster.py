@@ -37,13 +37,7 @@ class LocalCluster:
         hdfs_client = self.get_hdfs_client()
         zk_client = self.get_zk_client()
 
-        # Guard against persistent HDFS jobs. Even though Zookeeper guarantees sequential and unique job ids using
-        # Zookeeper's sequential node feature, we still need to check if the job id is already in use (from a previous
-        # run of the program). If it is, we generate a new job id until we find one that is not in use.
-        # Notice that this operation will only have to be performed once per cluster run.
         job_id = zk_client.get_sequential_job_id()
-        while hdfs_client.job_exists(job_id):
-            job_id = zk_client.get_sequential_job_id()
 
         hdfs_client.job_create(job_id=job_id, data=data, map_func=map_func, reduce_func=reduce_func)
 
@@ -114,8 +108,16 @@ class LocalCluster:
             stderr=subprocess.DEVNULL if not verbose else None
         )
 
-        _ = self.get_hdfs_client()
-        self.get_zk_client().setup_paths()
+        hdfs_client = self.get_hdfs_client()
+        zk_client = self.get_zk_client()
+
+        zk_client.setup_paths()
+
+        # Because we do not persist jobs in ZooKeeper, we need to know the number of persisted jobs in HDFS
+        # to set the first job id in ZooKeeper correctly (so that we do not have job id collisions).
+        # After we set this up, the job ids from ZooKeeper will be sequential and unique.
+        num_persisted_jobs = len(hdfs_client.hdfs.list('jobs/'))
+        zk_client.setup_first_job_id(num_persisted_jobs)
 
     def clear(self):
         """
