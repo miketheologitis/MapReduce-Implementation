@@ -33,6 +33,7 @@ kazoo_logger.setLevel(logging.ERROR)
 │   ├── get_workers_for_tasks_lock
 │   ├── master_job_assignment_lock
 │   ├── dead_worker_task_lock
+│   ├── dead_master_job_lock
 """
 
 
@@ -321,10 +322,33 @@ class ZookeeperClient:
 
             return None, None
 
+    def get_dead_master_job(self, new_master_hostname, dead_master_hostname):
+        """
+        Finds one (in-progress) job that was being handled by the dead master. This method is protected by a
+        distributed lock to ensure that only one master can execute it at a time across the distributed system.
+        If such a job is found we update its master_hostname to the new master's hostname so that the new master can
+        handle it. We also return the job_id, requested_n_workers. If no such job is found we return None, None.
+
+        :param new_master_hostname: Hostname of the new master.
+        :param dead_master_hostname: Hostname of the dead master.
+        :returns: Tuple (job_id, requested_n_workers) or (None, None) if no such job is found.
+        """
+
+        with self.zk.Lock("/locks/dead_master_job_lock"):
+
+            # Look for such 'in-progress' job in `/jobs`
+            for job_id in self.zk.get_children('/jobs'):
+                job = self.get(f'/jobs/{job_id}')
+                if job.master_hostname == dead_master_hostname and job.state == 'in-progress':
+                    self.zk.set(f'/jobs/{job_id}', pickle.dumps(job._replace(master_hostname=new_master_hostname)))
+                    return int(job_id), job.requested_n_workers
+
+            return None, None
+
     def investigate_job_of_dead_master(self, job_id):
         """
         Given the fact that the master that was handling this job is dead, and the fact that the job with the provided
-        job_id is in-progress, this method returns the needed information to resume the job. There are five scenarios:
+        job_id is in-progress, this method returns the needed information to resume the job. There are seven scenarios:
 
         1. The master died before the map phase started. Alias: 'before-map'
         2. The master died during the map phase. Alias: 'during-map'
@@ -344,18 +368,20 @@ class ZookeeperClient:
         scenario = None
 
         job_map_tasks = []
+        job_map_task_ids = []
         # We first iterate over all the map tasks. Reminder: The filename of a map task is of the form
         # <job_id>_<task_id>  where <job_id> is the job ID and <task_id> is the task ID.
         for task_file in self.zk.get_children('/map_tasks'):
 
             # Extract the job ID and task ID from the filename
-            task_job_id, _ = map(int, task_file.split('_'))
+            task_job_id, task_id = map(int, task_file.split('_'))
 
             if task_job_id == job_id:
                 # Get the task from ZooKeeper
                 task = self.get(f'/map_tasks/{task_file}')
 
                 job_map_tasks.append(task)
+                job_map_task_ids.append(task_id)
 
                 # If any of the map tasks is 'in-progress' it means that the master died during the map phase
                 if task.state == 'in-progress':
@@ -368,7 +394,7 @@ class ZookeeperClient:
 
         # If the master died during the map stage we return the scenario and the list of map tasks
         if scenario == 'during-map':
-            return {'scenario': scenario, 'map_tasks': job_map_tasks}
+            return {'scenario': scenario, 'map_tasks': job_map_tasks, 'task_ids': job_map_task_ids}
 
         # We now check the shuffle task. Reminder: For each job there is only one shuffle task with filename <job_id>.
         if self.zk.exists(f'/shuffle_tasks/{job_id}'):
@@ -387,17 +413,19 @@ class ZookeeperClient:
             return {'scenario': scenario}
 
         job_reduce_tasks = []
+        job_reduce_task_ids = []
         # We now check the reduce tasks. Reminder: The filename of a reduce task is of the form
         # <job_id>_<task_id1>_<task_id1>...
         for task_file in self.zk.get_children('/reduce_tasks'):
-            # Extract the job ID and task IDs from the filename
-            task_job_id, *_ = map(int, task_file.split('_'))
+            # Extract the job ID and task ID (list of IDs) from the filename
+            task_job_id, *task_id = map(int, task_file.split('_'))
 
             if task_job_id == job_id:
                 # Get the task from ZooKeeper
                 task = self.get(f'/reduce_tasks/{task_file}')
 
                 job_reduce_tasks.append(task)
+                job_reduce_task_ids.append(task_id)
 
                 # If any of the reduce tasks is 'in-progress' it means that the master died during the reduce phase
                 if task.state == 'in-progress':
@@ -409,7 +437,7 @@ class ZookeeperClient:
             return {'scenario': 'before-reduce'}
 
         if scenario == 'during-reduce':
-            return {'scenario': scenario, 'reduce_tasks': job_reduce_tasks}
+            return {'scenario': scenario, 'reduce_tasks': job_reduce_tasks, 'task_ids': job_reduce_task_ids}
 
         # If we reach this point it means that the master died after the reduce phase and before marking the job as
         # completed. Remember that we entered this method because the job was in-progress. Hence, the job is not

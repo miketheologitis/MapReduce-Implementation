@@ -5,23 +5,65 @@ import pickle
 import os
 import time
 import requests
+import logging
 
 from ..zookeeper.zookeeper_client import ZookeeperClient
 from ..hadoop.hdfs_client import HdfsClient
 
-"""
-The Python's Global interpreter Lock (GIL) can sometimes limit the effectiveness of multithreading 
-when it comes to CPU-bound tasks. However, in this case, as the tasks are I/O-bound (waiting for 
-responses from HTTP requests and Zookeeper), multithreading is the preferred option (in-contrast with
-the option of multiprocessing that is used in `worker.py` for pure parallelism).
-"""
 
+# TODO: Put timeouts on all ThreadPool reqs
+
+"""
+Master death assumptions:
+
+We define death of the master 'during-map' and 'during-reduce' if and only if we find out a task
+that is 'in-progress' in each phase, respectively.
+
+Assumption 1.
+
+If the master fails 'during-map', 'during-reduce' phases, and we find out that one of the corresponding
+tasks has not been received by the worker, i.e., Task.received is false, then no other worker has
+received its task. In other words, we treat the 
+
+# Send async request to all the workers for each map task
+with ThreadPoolExecutor(max_workers=num_assigned_workers) as executor:
+    executor.map(..., ...)
+
+as a single operation.
+
+Assumption 2.
+
+If the master fails 'during-map', 'during-reduce' phases, all the tasks have been registered with
+Zookeeper. In other words, we treat the
+
+# Polls zookeeper for workers. Blocks until at least one worker is assigned to this master.
+assigned_workers = self.get_idle_workers(...)
+num_assigned_workers = len(assigned_workers)
+
+# Register the tasks with the Zookeeper
+for i, worker_hostname in enumerate(assigned_workers):
+    zk_client.register_task(...)
+    
+lines of code as a single operation.
+
+To clarify the second assumption, notice  that if at least one worker is assigned to the 
+respective phase the `get_idle_workers` will return immediately. There is no unnecessary 
+waiting happening from the point where one worker is assigned. Hence, assumption 2 also takes
+a few milliseconds to complete as a whole operation. The first assumption takes nanoseconds.
+The reasoning for those two assumptions is that these operations are EXTREMELY quick in respect
+to the phase. If we are unlucky enough to have the master fail in the middle of one of those 
+operations, then we can restart the system and re-run the operation.
+"""
 
 # Try to find the 1st parameter in env variables which will be set up by docker-compose
 # (see the .yaml file), else default to the second.
 HOSTNAME = os.getenv('HOSTNAME', 'localhost')
 ZK_HOSTS = os.getenv('ZK_HOSTS', '127.0.0.1:2181')
 HDFS_HOST = os.getenv('HDFS_HOST', 'localhost:9870')
+
+logging.basicConfig(
+    level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 app = Flask(__name__)
 
@@ -31,7 +73,11 @@ class Master:
         self.zk_client = None
         self.hdfs_client = None
 
-        self.registered_workers = set()  # set of registered workers (hostnames) at any point in time
+        # set of registered workers (hostnames) at any point in time
+        self.registered_workers = set()
+
+        # set of registered masters (hostnames) at any point in time (our hostname is always in this set)
+        self.registered_masters = set()
 
     def get_zk_client(self):
         if self.zk_client is None:
@@ -81,16 +127,16 @@ class Master:
         )
         num_assigned_workers = len(assigned_workers)
 
-        # Split data to `num_assigned_workers` chunks and save them to HDFS
-        for i, chunk in enumerate(self.split_data(map_data, num_assigned_workers)):
-            hdfs_client.save_data(hdfs_path=f'jobs/job_{job_id}/map_tasks/{i}.pickle', data=chunk)
-
         # Register the tasks with the Zookeeper
         for i, worker_hostname in enumerate(assigned_workers):
             zk_client.register_task(
                 task_type='map', job_id=job_id, state='in-progress',
                 worker_hostname=worker_hostname, task_id=i
             )
+
+        # Split data to `num_assigned_workers` chunks and save them to HDFS
+        for i, chunk in enumerate(self.split_data(map_data, num_assigned_workers)):
+            hdfs_client.save_data(hdfs_path=f'jobs/job_{job_id}/map_tasks/{i}.pickle', data=chunk)
 
         event = self.map_completion_event(job_id=job_id, n_tasks=num_assigned_workers)
 
@@ -220,12 +266,16 @@ class Master:
         :param task_filename: The filename of the task in Zookeeper
         :param task_type: The type of the task (map, shuffle, reduce)
         """
+        logging.info(f'Handling dead worker task: {task_filename}')
+
         zk_client = self.get_zk_client()
 
         # Polls zookeeper for workers. Blocks until one worker is assigned to this master.
         assigned_worker_hostname = self.get_idle_workers(requested_n_workers=1)[0]
 
         if task_type == 'map':
+            logging.info(f'Found out that the dead worker was assigned to a map task')
+
             # Convert the filename to the job_id, task_id (integer)
             job_id, task_id = list(map(int, task_filename.split('_')))
 
@@ -242,6 +292,8 @@ class Master:
                 )
 
         if task_type == 'reduce':
+            logging.info(f'Found out that the dead worker was assigned to a reduce task')
+
             # Convert the filename to the job_id, task_ids (integer)
             job_id, *task_ids = list(map(int, task_filename.split('_')))
 
@@ -258,6 +310,8 @@ class Master:
                 )
 
         if task_type == 'shuffle':
+            logging.info(f'Found out that the dead worker was assigned to a shuffle task')
+
             # Convert the filename to the job_id
             job_id = int(task_filename)
 
@@ -272,6 +326,218 @@ class Master:
                         json={'job_id': job_id}
                     )
                 )
+
+        logging.info(f'Finished handling dead worker task: {task_filename}')
+
+    def handle_dead_master_job(self, job_id, requested_n_workers):
+        """
+        When this function is called we know that we were assigned to handle the job of the dead master. There are
+        seven scenarios that we need to handle:
+
+        1. The master died before the map phase started. Alias: 'before-map'
+        2. The master died during the map phase. Alias: 'during-map'
+        3. The master died before the shuffle phase started. Alias: 'before-shuffle'
+        4. The master died during the shuffle phase. Alias: 'during-shuffle'
+        5. The master died before the reduce phase started. Alias: 'before-reduce'
+        6. The master died during the reduce phase. Alias: 'during-reduce'
+        7. The master died after the reduce phase and before marking the job as completed. Alias: 'before-completion'
+        """
+        logging.info(f'I am currently handling the job {job_id} of the dead master')
+
+        zk_client = self.get_zk_client()
+        hdfs_client = self.get_hdfs_client()
+
+        # Note that the job master is us right now. We investigate the job based solely on the job_id.
+        info_dict = zk_client.investigate_job_of_dead_master(job_id)
+
+        if info_dict['scenario'] == 'before-map':
+            logging.info(f'I found that the master died before the map phase started')
+
+            # Job just started so treat it as a new job
+            self.handle_job(job_id, requested_n_workers)
+
+        if info_dict['scenario'] == 'during-map':
+            logging.info(f'I found that the master died during the map phase')
+
+            # Based on Assumption 2. (see comments at the top of the file)
+            num_assigned_workers = len(info_dict['map_tasks'])
+
+            # Assumption 1. (see comments at the top of the file)
+            if any([not task.received for task in info_dict['map_tasks']]):
+                logging.info(f'At least one task was not received by a worker. I will continue based on assumption 1.')
+
+                # Save data to HDFS (maybe again)
+                map_data = self.hdfs_client.get_data(hdfs_path=f'jobs/job_{job_id}/data.pickle')
+
+                # Split data to `num_assigned_workers` chunks and save them to HDFS
+                for i, chunk in enumerate(self.split_data(map_data, num_assigned_workers)):
+                    hdfs_client.save_data(hdfs_path=f'jobs/job_{job_id}/map_tasks/{i}.pickle', data=chunk)
+
+                event = self.map_completion_event(job_id=job_id, n_tasks=num_assigned_workers)
+
+                # Then based on Assumption 1. no map task has been received by a worker yet.
+                # (see comments at the top of the file)
+                with ThreadPoolExecutor(max_workers=num_assigned_workers) as executor:
+                    executor.map(
+                        lambda task_info: requests.post(
+                            f'http://{task_info[1]}:5000/map-task',
+                            json={'job_id': job_id, 'task_id': task_info[0]}
+                        ),
+                        zip(
+                            [task_id for task_id in info_dict['task_ids']],
+                            [task.worker_hostname for task in info_dict['map_tasks']]
+                        )
+                    )
+                    # shutdown automatically, wait for all tasks to complete
+
+                # wait on that event
+                while not event.is_set():
+                    event.wait(1)
+
+            else:
+                logging.info(f'All map tasks were received by the workers. I am waiting for map phase to complete.')
+
+                # All workers have received their tasks and running so just wait for map to finish
+                event = self.map_completion_event(job_id=job_id, n_tasks=num_assigned_workers)
+
+                # wait on that event
+                while not event.is_set():
+                    event.wait(1)
+
+            # 2. Shuffle Task (blocks of course)
+            logging.info('Map phase completed. I am handling shuffle phase now.')
+            self.handle_shuffle(job_id)
+
+            # 3. Reduce Tasks (blocks of course)
+            logging.info('Shuffle phase completed. I am handling reduce phase now.')
+            self.handle_reduce(job_id, requested_n_workers)
+
+            # 4. Mark Job completed
+            logging.info('Reduce phase completed. I am marking the job as completed now.')
+            zk_client.update_job(job_id=job_id, state='completed')
+            logging.info('I am done.')
+
+        if info_dict['scenario'] == 'before-shuffle':
+            logging.info(f'I found that the master died before the shuffle phase started')
+
+            # 2. Shuffle Task (blocks of course)
+            logging.info('I am handling shuffle phase now.')
+            self.handle_shuffle(job_id)
+
+            # 3. Reduce Tasks (blocks of course)
+            logging.info('Shuffle phase completed. I am handling reduce phase now.')
+            self.handle_reduce(job_id, requested_n_workers)
+
+            # 4. Mark Job completed
+            logging.info('Reduce phase completed. I am marking the job as completed now.')
+            zk_client.update_job(job_id=job_id, state='completed')
+            logging.info('I am done.')
+
+        if info_dict['scenario'] == 'during-shuffle':
+            logging.info(f'I found that the master died during the shuffle phase')
+
+            shuffle_task = info_dict['shuffle_task']
+
+            if not shuffle_task.received:
+                logging.info(f'The shuffle task was not received by a worker.')
+                # Set up an event using `DataWatcher` for the completion of the shuffle task
+                event = self.shuffle_completion_event(job_id=job_id)
+
+                # Send async request for the shuffle task
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    executor.submit(
+                        lambda: requests.post(
+                            f'http://{shuffle_task.worker_hostname}:5000/shuffle-task',
+                            json={'job_id': job_id}
+                        )
+                    )
+
+                # wait on that event
+                while not event.is_set():
+                    event.wait(1)
+            else:
+                logging.info(
+                    f'The shuffle task was received by a worker. I am waiting for the shuffle phase to complete.'
+                )
+                event = self.shuffle_completion_event(job_id=job_id)
+
+                # wait on that event
+                while not event.is_set():
+                    event.wait(1)
+
+            # 3. Reduce Tasks (blocks of course)
+            logging.info('Shuffle phase completed. I am handling reduce phase now.')
+            self.handle_reduce(job_id, requested_n_workers)
+
+            # 4. Mark Job completed
+            logging.info('Reduce phase completed. I am marking the job as completed now.')
+            zk_client.update_job(job_id=job_id, state='completed')
+            logging.info('I am done.')
+
+        if info_dict['scenario'] == 'before-reduce':
+            logging.info(f'I found that the master died before the reduce phase started')
+
+            # 3. Reduce Tasks (blocks of course)
+            logging.info('I am handling reduce phase now.')
+            self.handle_reduce(job_id, requested_n_workers)
+
+            # 4. Mark Job completed
+            logging.info('Reduce phase completed. I am marking the job as completed now.')
+            zk_client.update_job(job_id=job_id, state='completed')
+            logging.info('I am done.')
+
+        if info_dict['scenario'] == 'during-reduce':
+            logging.info(f'I found that the master died during the reduce phase')
+
+            # Based on Assumption 2. (see comments at the top of the file)
+            num_assigned_workers = len(info_dict['reduce_tasks'])
+
+            # Assumption 1. (see comments at the top of the file)
+            if any([not task.received for task in info_dict['reduce_tasks']]):
+                logging.info(f'Not all reduce tasks were received by the workers. Following assumption 1.')
+
+                event = self.reduce_completion_event(job_id=job_id, list_tasks=info_dict['task_ids'])
+
+                # Then based on Assumption 1. no map task has been received by a worker yet.
+                # (see comments at the top of the file)
+                with ThreadPoolExecutor(max_workers=num_assigned_workers) as executor:
+                    executor.map(
+                        lambda task_info: requests.post(
+                            f'http://{task_info[0]}:5000/reduce-task',
+                            json={'job_id': job_id, 'task_ids': task_info[1]}
+                        ),
+                        zip(
+                            [task.worker_hostname for task in info_dict['reduce_tasks']],
+                            [task_id for task_id in info_dict['task_ids']]
+                        )
+                    )
+                    # shutdown automatically, wait for all tasks to complete
+
+                # wait on that event
+                while not event.is_set():
+                    event.wait(1)
+
+            else:
+                logging.info(
+                    f'All reduce tasks were received by the workers. I am waiting for the reduce phase to complete.'
+                )
+
+                # All workers have received their tasks and running so just wait for map to finish
+                event = self.reduce_completion_event(job_id=job_id, list_tasks=info_dict['task_ids'])
+
+                # wait on that event
+                while not event.is_set():
+                    event.wait(1)
+
+            zk_client.update_job(job_id=job_id, state='completed')
+
+        if info_dict['scenario'] == 'before-completion':
+            logging.info(f'I found that the master died before the job was completed')
+
+            # 4. Mark Job completed
+            logging.info('I am marking the job as completed now.')
+            zk_client.update_job(job_id=job_id, state='completed')
+            logging.info('I am done.')
 
     def map_completion_event(self, job_id, n_tasks):
         """
@@ -384,6 +650,8 @@ class Master:
             job_id, requested_n_workers = zk_client.get_job(HOSTNAME)
             # we indeed got assigned a job (not None)
             if job_id is not None:
+                logging.info(f'I managed to get myself assigned to job {job_id}')
+
                 # Start a new thread to handle the job
                 job_thread = threading.Thread(target=self.handle_job, args=(job_id, requested_n_workers))
                 job_thread.start()
@@ -420,11 +688,67 @@ class Master:
                     task_filename, task_type = zk_client.get_dead_worker_task(dead_worker)
 
                     if task_filename is not None:
+                        logging.info(
+                            f'I managed to get myself assigned to handle the task of the dead worker {dead_worker}'
+                        )
+
                         # Start a new thread to handle the task
                         dead_worker_task_thread = threading.Thread(
                             target=self.handle_dead_worker_task, args=(task_filename, task_type)
                         )
                         dead_worker_task_thread.start()
+
+    def dead_masters_watcher(self):
+        """
+        Sets up a watcher on the /masters path in Zookeeper. When a master dies the ephemeral node at that path
+        will be deleted and the watcher will be triggered. The callback function will then be called and a master
+        must find whether the master left any incomplete ('in-progress') jobs and handle them accordingly.
+
+        Remember that the callback function is called the first time the watcher is set up, so the
+        `self.registered_masters` are updated with the current masters. We rely on the guarantee that the
+        ephemeral nodes are deleted when the master dies, hence on the first call we indeed have the current
+        masters in the distributed system.
+        """
+        zk_client = self.get_zk_client()
+
+        @zk_client.zk.ChildrenWatch('/masters')
+        def callback(children):
+            # The callback function is called when the children of the watched znode change.
+            # children is a list of the names of the children of jobs_path.
+
+            children_set = set(children)
+
+            # Find the dead masters. Set of dead master hostnames
+            dead_masters = self.registered_masters - children_set
+
+            # Update the registered masters
+            self.registered_masters = children_set
+
+            if dead_masters:
+                # if there are dead masters, reassign their jobs
+                for dead_master in dead_masters:
+
+                    # Get the job of the dead master. If no in-progress job is found for the dead master
+                    # then job_id and requested_n_workers will be None.
+                    job_id, requested_n_workers = zk_client.get_dead_master_job(
+                        new_master_hostname=HOSTNAME, dead_master_hostname=dead_master
+                    )
+                    while job_id is not None:
+                        logging.info(
+                            f'I managed to get myself assigned to handle the job {job_id} of the dead master {dead_master}'
+                        )
+
+                        # Start a new thread to handle the job
+                        dead_master_job_thread = threading.Thread(
+                            target=self.handle_dead_master_job, args=(job_id, requested_n_workers)
+                        )
+                        dead_master_job_thread.start()
+
+                        # Get next job of the dead master. If no in-progress job is found for the dead master
+                        # then job_id will be None.
+                        job_id, requested_n_workers = zk_client.get_dead_master_job(
+                            new_master_hostname=HOSTNAME, dead_master_hostname=dead_master
+                        )
 
     @staticmethod
     def split_data(data, n):
@@ -448,6 +772,7 @@ class Master:
         zk_client.register_master(HOSTNAME)
         self.new_job_watcher()
         self.dead_workers_watcher()
+        # TODO: Add a watcher for dead masters
         app.run(host='0.0.0.0', port=5000)
 
 

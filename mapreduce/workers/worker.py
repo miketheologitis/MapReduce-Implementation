@@ -3,6 +3,7 @@ from flask import Flask, request
 import os
 from operator import itemgetter
 from itertools import groupby
+import logging
 
 from ..zookeeper.zookeeper_client import ZookeeperClient
 from ..hadoop.hdfs_client import HdfsClient
@@ -12,6 +13,10 @@ from ..hadoop.hdfs_client import HdfsClient
 HOSTNAME = os.getenv('HOSTNAME', 'localhost')
 ZK_HOSTS = os.getenv('ZK_HOSTS', '127.0.0.1:2181')
 HDFS_HOST = os.getenv('HDFS_HOST', 'localhost:9870')
+
+logging.basicConfig(
+    level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 app = Flask(__name__)
 
@@ -46,11 +51,14 @@ class Worker:
         req_data = request.get_json()
         job_id, task_id = req_data['job_id'], req_data['task_id']
 
+        logging.info(f'Received map task with job_id={job_id} and task_id={task_id}')
+
         hdfs_client = self.get_hdfs_client()
         zk_client = self.get_zk_client()
 
         # Confirm that we received the task
         zk_client.update_task('map', job_id=job_id, task_id=task_id, received=True)
+        logging.info(f'Updated map task with job_id={job_id} and task_id={task_id} to received=True')
 
         # Retrieve the data/func for this task from HDFS (using `job_id` and `task_id`)
         data = hdfs_client.get_data(f'jobs/job_{job_id}/map_tasks/{task_id}.pickle')
@@ -66,6 +74,7 @@ class Worker:
         zk_client.update_worker(HOSTNAME, state='idle')
         zk_client.update_task('map', job_id=job_id, task_id=task_id, state='completed')
 
+        logging.info(f'Successfully completed map task')
         # Return OK
         return '', 200
 
@@ -103,11 +112,14 @@ class Worker:
 
         job_id = request.get_json()['job_id']
 
+        logging.info(f'Received shuffle task with job_id={job_id}')
+
         hdfs_client = self.get_hdfs_client()
         zk_client = self.get_zk_client()
 
         # Confirm that we received the task
         zk_client.update_task('shuffle', job_id=job_id, received=True)
+        logging.info(f'Updated shuffle task with job_id={job_id} to received=True')
 
         # Retrieve data from map_results directory
         data = []
@@ -122,6 +134,7 @@ class Worker:
         zk_client.update_worker(HOSTNAME, state='idle')
         zk_client.update_task('shuffle', job_id=job_id, state='completed')
 
+        logging.info(f'Successfully completed shuffle task with job_id={job_id}')
         # Return OK
         return '', 200
 
@@ -143,11 +156,14 @@ class Worker:
         req_data = request.get_json()
         job_id, task_ids = req_data['job_id'], req_data['task_ids']
 
+        logging.info(f'Received reduce task with job_id={job_id} and task_ids={task_ids}')
+
         hdfs_client = self.get_hdfs_client()
         zk_client = self.get_zk_client()
 
         # Confirm that we received the task
         zk_client.update_task('reduce', job_id=job_id, task_id=task_ids, received=True)
+        logging.info(f'Updated task to received')
 
         data = []
         for task_id in task_ids:
@@ -173,9 +189,12 @@ class Worker:
         zk_client.update_worker(HOSTNAME, state='idle')
         zk_client.update_task('reduce', job_id=job_id, task_id=task_ids, state='completed')
 
+        logging.info(f'Successfully completed reduce task with job_id={job_id} and task_ids={task_ids}')
+
         return '', 200
 
     def run(self):
+        logging.info('Started running...')
         zk_client = self.get_zk_client()
         zk_client.register_worker(HOSTNAME)
         app.run(host='0.0.0.0', port=5000)
