@@ -768,11 +768,12 @@ class Master:
             start = chunk_end
 
     def run(self):
+        logging.info(f'Started running...')
         zk_client = self.get_zk_client()
         zk_client.register_master(HOSTNAME)
         self.new_job_watcher()
         self.dead_workers_watcher()
-        # TODO: Add a watcher for dead masters
+        self.dead_masters_watcher()
         app.run(host='0.0.0.0', port=5000)
 
 
