@@ -79,6 +79,9 @@ class Master:
         # set of registered masters (hostnames) at any point in time (our hostname is always in this set)
         self.registered_masters = set()
 
+        # set of jobs that are in progress
+        self.in_progress_jobs = set()
+
     def get_zk_client(self):
         if self.zk_client is None:
             self.zk_client = ZookeeperClient(ZK_HOSTS)
@@ -247,6 +250,9 @@ class Master:
         logging.info(f'Waiting for reduce tasks to complete for job {job_id}')
         while not event.is_set():
             event.wait(1)
+
+    def handle_job2(self, job_id, requested_n_workers):
+        pass
 
     def handle_job(self, job_id, requested_n_workers):
         """
@@ -589,6 +595,8 @@ class Master:
                 # The callback function is called when the data at the watched z-node changes.
                 task = pickle.loads(data)
 
+                logging.info(f'Callback called for map task {task} in waiting for completion event')
+
                 if task.state == 'completed':
                     # Increment the counter with lock
                     with lock:
@@ -675,14 +683,38 @@ class Master:
             # The callback function is called when the children of the watched znode change.
             # children is a list of the names of the children of jobs_path.
 
-            job_id, requested_n_workers = zk_client.get_job(HOSTNAME)
-            # we indeed got assigned a job (not None)
-            if job_id is not None:
-                logging.info(f'I managed to get myself assigned to job {job_id}')
+            # The callback function is called when the children of the watched znode change.
+            # children is a list of the filenames (job ids) of the children of the watched znode.
 
-                # Start a new thread to handle the job
-                job_thread = threading.Thread(target=self.handle_job, args=(job_id, requested_n_workers))
-                job_thread.start()
+            children_set = set(children)
+
+            # Find the new jobs
+            new_jobs = children_set - self.in_progress_jobs
+
+            logging.info(f'New jobs: {new_jobs}')
+
+            # Update the registered jobs
+            self.in_progress_jobs = children_set
+
+            # For each new job, try and get it
+            for job_id in new_jobs:
+                job_id = int(job_id)
+
+                # Get the job from Zookeeper
+                logging.info(f'Trying to get job {job_id} from Zookeeper')
+                got_job = zk_client.get_job(HOSTNAME, job_id)
+
+                if got_job:
+                    # If the job was successfully got, then handle it
+                    logging.info(f'Got job {job_id} from Zookeeper')
+                    job = zk_client.get(f'/jobs/{job_id}')
+                    logging.info(f'Got job {job} from Zookeeper')
+
+                    job_thread = threading.Thread(
+                        target=self.handle_job2, args=(job_id, job.requested_n_workers)
+                    )
+                    job_thread.start()
+
 
     def dead_workers_watcher(self):
         """
@@ -701,6 +733,8 @@ class Master:
         def callback(children):
             # The callback function is called when the children of the watched znode change.
             # children is a list of the names of the children of jobs_path.
+
+            logging.info(f'Children of /workers changed. Current children: {children}')
 
             children_set = set(children)
 
@@ -804,8 +838,8 @@ class Master:
         zk_client = self.get_zk_client()
         zk_client.register_master(HOSTNAME)
         self.new_job_watcher()
-        self.dead_workers_watcher()
-        self.dead_masters_watcher()
+        #self.dead_workers_watcher()
+        #self.dead_masters_watcher()
         app.run(host='0.0.0.0', port=5000)
 
 

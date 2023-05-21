@@ -267,8 +267,11 @@ class ZookeeperClient:
         :return: List of worker hostnames.
         """
         idle_workers = []
+        logging.info(f'\nAcquiring lock to get {n} idle workers\n')
 
         with self.zk.Lock("/locks/get_workers_for_tasks_lock"):
+
+            logging.info(f'\nLock acquired to get {n} idle workers\n')
 
             # Get the children (worker hostnames) under the workers path
             children = self.zk.get_children('/workers')
@@ -289,9 +292,10 @@ class ZookeeperClient:
                         # If the desired number of idle workers is reached, break the loop
                         break
 
+        logging.info(f'\nLock released. Get {n} idle workers. We got {idle_workers}.\n')
         return idle_workers
 
-    def get_job(self, master_hostname):
+    def get_job(self, master_hostname, job_id):
         """
         Retrieves an idle job and updates its state to 'in-progress' with the assigned master hostname.
 
@@ -303,25 +307,26 @@ class ZookeeperClient:
         the guarantee of mutual exclusion even in a distributed system.
 
         :param master_hostname: Hostname of the master.
-        :return: The job ID of the retrieved idle job, or None if no idle jobs are available.
-                 and the number of workers requested for this job
+        :param job_id: The unique job id
+        :return: True if a job was successfully assigned and updated, False otherwise.
         """
+        logging.info(f'Attempting to acquire lock for job assignment by master {master_hostname}\n')
 
-        with self.zk.Lock("/locks/master_job_assignment_lock"):
+        got_job = False
 
-            # Get the children (worker hostnames) under the workers path
-            children = self.zk.get_children('/jobs')
+        with self.zk.Lock(path="/locks/master_job_assignment_lock", identifier=master_hostname):
 
-            for job_id in children:
-                job = self.get(f'/jobs/{job_id}')
-                requested_n_workers = job.requested_n_workers
+            logging.info(f'Lock acquired for job assignment by master {master_hostname}\n')
 
-                if job.state == 'idle':
-                    # Update the job state to 'in-progress' with the assigned master hostname
-                    self.update_job(job_id, state='in-progress', master_hostname=master_hostname)
-                    return int(job_id), requested_n_workers
+            job = self.get(f'/jobs/{job_id}')
+            if job.state == 'idle':
+                # Update the job state to 'in-progress' and assign the master hostname
+                self.update_job(job_id, state='in-progress', master_hostname=master_hostname)
+                logging.info(f'Job {job_id} assigned to master {master_hostname}')
+                got_job = True
 
-            return None, None
+        logging.info(f'Lock released.\n')
+        return got_job
 
     def get_dead_worker_task(self, dead_worker_hostname):
         """
