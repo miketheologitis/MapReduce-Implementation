@@ -251,7 +251,7 @@ class Master:
         # 4. Mark Job completed
         self.get_zk_client().update_job(job_id=job_id, state='completed')
 
-    def handle_dead_worker_task(self, task_filename, task_type):
+    def handle_dead_worker_task(self, task_filename, task_type, register_dead_task=True):
         """
         Given the fact that we have 'map', 'shuffle', 'reduce' tasks, and the fact that the
         information of job_id, task_id, etc. lies in:
@@ -265,10 +265,15 @@ class Master:
 
         :param task_filename: The filename of the task in Zookeeper
         :param task_type: The type of the task (map, shuffle, reduce)
+        :param register_dead_task: If True, then we register the task as dead in Zookeeper
         """
         logging.info(f'Handling dead worker task: {task_filename}')
 
         zk_client = self.get_zk_client()
+
+        if register_dead_task:
+            zk_client.register_dead_task(filename=task_filename, task_type=task_type, state='in-progress', master_hostname=HOSTNAME)
+            logging.info(f'Registered dead task: {task_filename} to Zookeeper')
 
         # Polls zookeeper for workers. Blocks until one worker is assigned to this master.
         assigned_worker_hostname = self.get_idle_workers(requested_n_workers=1)[0]
@@ -328,6 +333,8 @@ class Master:
                 )
 
         logging.info(f'Finished handling dead worker task: {task_filename}')
+        zk_client.update_dead_task(filename=task_filename, state='completed')
+        logging.info(f'Updated dead worker task as "completed" to Zookeeper')
 
     def handle_dead_master_job(self, job_id, requested_n_workers):
         """
@@ -682,21 +689,20 @@ class Master:
             # Update the registered workers
             self.registered_workers = children_set
 
-            if dead_workers:
-                # if there are dead workers, reassign their tasks
-                for dead_worker in dead_workers:
-                    task_filename, task_type = zk_client.get_dead_worker_task(dead_worker)
+            # if there are dead workers, reassign their tasks
+            for dead_worker in dead_workers:
+                task_filename, task_type = zk_client.get_dead_worker_task(dead_worker)
 
-                    if task_filename is not None:
-                        logging.info(
-                            f'I managed to get myself assigned to handle the task of the dead worker {dead_worker}'
-                        )
+                if task_filename is not None:
+                    logging.info(
+                        f'I managed to get myself assigned to handle the task of the dead worker {dead_worker}'
+                    )
 
-                        # Start a new thread to handle the task
-                        dead_worker_task_thread = threading.Thread(
-                            target=self.handle_dead_worker_task, args=(task_filename, task_type)
-                        )
-                        dead_worker_task_thread.start()
+                    # Start a new thread to handle the task
+                    dead_worker_task_thread = threading.Thread(
+                        target=self.handle_dead_worker_task, args=(task_filename, task_type)
+                    )
+                    dead_worker_task_thread.start()
 
     def dead_masters_watcher(self):
         """
@@ -724,31 +730,36 @@ class Master:
             # Update the registered masters
             self.registered_masters = children_set
 
-            if dead_masters:
-                # if there are dead masters, reassign their jobs
-                for dead_master in dead_masters:
+            # if there are dead masters, reassign their jobs
+            for dead_master in dead_masters:
 
-                    # Get the job of the dead master. If no in-progress job is found for the dead master
-                    # then job_id and requested_n_workers will be None.
-                    job_id, requested_n_workers = zk_client.get_dead_master_job(
-                        new_master_hostname=HOSTNAME, dead_master_hostname=dead_master
+                # Protected by distributed lock, only one master can handle the dead master's responsibilities
+                # The rest will have empty lists.
+                jobs, dead_tasks = zk_client.get_dead_master_responsibilities(
+                    new_master_hostname=HOSTNAME, dead_master_hostname=dead_master
+                )
+
+                for dead_task_dict in dead_tasks:
+                    logging.info(
+                        f"Handling dead task {dead_task_dict['filename']} of dead master {dead_master}"
                     )
-                    while job_id is not None:
-                        logging.info(
-                            f'I managed to get myself assigned to handle the job {job_id} of the dead master {dead_master}'
-                        )
+                    # Start a new thread to handle the task
+                    dead_worker_task_thread = threading.Thread(
+                        target=self.handle_dead_worker_task,
+                        args=(dead_task_dict['filename'], dead_task_dict['task_type'], False)
+                    )
+                    dead_worker_task_thread.start()
 
-                        # Start a new thread to handle the job
-                        dead_master_job_thread = threading.Thread(
-                            target=self.handle_dead_master_job, args=(job_id, requested_n_workers)
-                        )
-                        dead_master_job_thread.start()
-
-                        # Get next job of the dead master. If no in-progress job is found for the dead master
-                        # then job_id will be None.
-                        job_id, requested_n_workers = zk_client.get_dead_master_job(
-                            new_master_hostname=HOSTNAME, dead_master_hostname=dead_master
-                        )
+                for job_dict in jobs:
+                    logging.info(
+                        f"Handling job {job_dict['job_id']} of dead master {dead_master}"
+                    )
+                    # Start a new thread to handle the job
+                    dead_master_job_thread = threading.Thread(
+                        target=self.handle_dead_master_job,
+                        args=(job_dict['job_id'], job_dict['requested_n_workers'])
+                    )
+                    dead_master_job_thread.start()
 
     @staticmethod
     def split_data(data, n):

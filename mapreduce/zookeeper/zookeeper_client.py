@@ -27,13 +27,16 @@ kazoo_logger.setLevel(logging.ERROR)
 │   ├── <job_id>   
 ├── reduce_tasks/      (created by `user` `not ephemeral`)
 │   ├── <job_id>_<task_id1>_<task_id1>...     , For example: 1_20_30_32 job_id : 1 , task_ids: [20,30,32]
+├── dead_tasks/      (caused by dead workers) (created by `master` `not ephemeral`)
+│   ├── (either map_tasks or shuffle_tasks or reduce_tasks filenames)
+│   ├── ...
 ├── generators/  (created by `user` `not ephemeral`)
 │   ├── job_id_sequential
 ├── locks/  (created by `user` `not ephemeral`)
 │   ├── get_workers_for_tasks_lock
 │   ├── master_job_assignment_lock
 │   ├── dead_worker_task_lock
-│   ├── dead_master_job_lock
+│   ├── dead_master_responsibilities_lock
 """
 
 
@@ -70,6 +73,17 @@ class Task(NamedTuple):
     received: bool = False
 
 
+class DeadTask(NamedTuple):
+    """
+    :param state: Task state ('in-progress', 'completed').
+    :param master_hostname: Master hostname that is handling the dead worker task.
+    :param task_type: 'map', 'reduce', 'shuffle'
+    """
+    state: str
+    master_hostname: str
+    task_type: str
+
+
 class ZookeeperClient:
     def __init__(self, hosts):
         self.zk = KazooClient(hosts=hosts)
@@ -90,7 +104,7 @@ class ZookeeperClient:
         """Creates the necessary directories in ZooKeeper."""
         paths = [
             '/workers', '/masters', '/map_tasks', '/shuffle_tasks',
-            '/reduce_tasks', '/generators', '/locks', '/jobs'
+            '/reduce_tasks', '/generators', '/locks', '/jobs', '/dead_tasks'
         ]
         for path in paths:
             self.zk.create(path)
@@ -153,6 +167,19 @@ class ZookeeperClient:
         serialized_job = pickle.dumps(job)
         self.zk.create(f'/jobs/{job_id}', serialized_job)
 
+    def register_dead_task(self, filename, state, task_type, master_hostname):
+        """
+        Registers a dead task in ZooKeeper.
+
+        :param filename: The filename of the dead task
+        :param state: 'in-progress' or 'completed'
+        :param task_type: 'map', 'reduce', 'shuffle'
+        :param master_hostname: The master that got assigned this task (hostname)
+        """
+        dead_task = DeadTask(state=state, task_type=task_type, master_hostname=master_hostname)
+        serialized_dead_task = pickle.dumps(dead_task)
+        self.zk.create(f'/dead_tasks/{filename}', serialized_dead_task)
+
     def update_task(self, task_type, job_id, task_id=None, **kwargs):
         """
         Updates task information in ZooKeeper.
@@ -177,6 +204,18 @@ class ZookeeperClient:
         task = self.get(task_path)
         updated_task = task._replace(**kwargs)
         self.zk.set(task_path, pickle.dumps(updated_task))
+
+    def update_dead_task(self, filename, **kwargs):
+        """
+        Updates dead task information in ZooKeeper.
+
+        :param filename: The filename of the dead task
+        :param kwargs: Additional attributes to update in the task.
+        """
+        dead_task_path = f'/dead_tasks/{filename}'
+        dead_task = self.get(dead_task_path)
+        updated_dead_task = dead_task._replace(**kwargs)
+        self.zk.set(dead_task_path, pickle.dumps(updated_dead_task))
 
     def update_worker(self, worker_hostname, **kwargs):
         """
@@ -322,28 +361,42 @@ class ZookeeperClient:
 
             return None, None
 
-    def get_dead_master_job(self, new_master_hostname, dead_master_hostname):
+    def get_dead_master_responsibilities(self, new_master_hostname, dead_master_hostname):
         """
-        Finds one (in-progress) job that was being handled by the dead master. This method is protected by a
-        distributed lock to ensure that only one master can execute it at a time across the distributed system.
-        If such a job is found we update its master_hostname to the new master's hostname so that the new master can
-        handle it. We also return the job_id, requested_n_workers. If no such job is found we return None, None.
+        Finds the jobs that were being handled by the dead master and the dead worker tasks it was handling. The idea
+        behind this method is to transfer all the responsibilities of the dead master to the new master. Notice that
+        This method is protected by a distributed lock to ensure that only one master can execute it at a time across
+        the distributed system. If such jobs or dead tasks are found we update their master_hostname to the new master's
+        hostname so that the new master can handle it.
 
         :param new_master_hostname: Hostname of the new master.
         :param dead_master_hostname: Hostname of the dead master.
-        :returns: Tuple (job_id, requested_n_workers) or (None, None) if no such job is found.
+        :returns: The old jobs of the dead master and the dead tasks it was handling ALL with the new master's hostname.
         """
 
-        with self.zk.Lock("/locks/dead_master_job_lock"):
+        with self.zk.Lock("/locks/dead_master_responsibilities_lock"):
+
+            jobs = []
+            dead_tasks = []
 
             # Look for such 'in-progress' job in `/jobs`
             for job_id in self.zk.get_children('/jobs'):
                 job = self.get(f'/jobs/{job_id}')
                 if job.master_hostname == dead_master_hostname and job.state == 'in-progress':
                     self.zk.set(f'/jobs/{job_id}', pickle.dumps(job._replace(master_hostname=new_master_hostname)))
-                    return int(job_id), job.requested_n_workers
+                    job_dict = {'job_id': int(job_id), 'requested_n_workers': job.requested_n_workers}
+                    jobs.append(job_dict)
 
-            return None, None
+            # Look for dead tasks that the master was assigned to. (dead workers)
+            for filename in self.zk.get_children('/dead_tasks'):
+                dead_task = self.get(f'/dead_tasks/{filename}')
+
+                if dead_task.master_hostname == dead_master_hostname and dead_task.state == 'in-progress':
+                    self.zk.set(f'/dead_tasks/{filename}', pickle.dumps(dead_task._replace(master_hostname=new_master_hostname)))
+                    dead_task_dict = {'filename': filename, 'task_type': dead_task.task_type}
+                    dead_tasks.append(dead_task_dict)
+
+            return jobs, dead_tasks
 
     def investigate_job_of_dead_master(self, job_id):
         """
