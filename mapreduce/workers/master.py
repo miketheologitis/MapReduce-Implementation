@@ -115,10 +115,12 @@ class Master:
         zk_client = self.get_zk_client()
         hdfs_client = self.get_hdfs_client()
 
+        logging.info(f'Reading data from HDFS for job {job_id}')
         map_data = self.hdfs_client.get_data(hdfs_path=f'jobs/job_{job_id}/data.pickle')
 
         # Polls zookeeper for workers. Blocks until at least one worker is assigned to this master.
         # Maximum amount of workers to ask for is len(data)
+        logging.info(f'Getting idle workers for job {job_id}')
         assigned_workers = self.get_idle_workers(
             requested_n_workers=min(
                 requested_n_workers if requested_n_workers else len(map_data),
@@ -126,8 +128,10 @@ class Master:
             )
         )
         num_assigned_workers = len(assigned_workers)
+        logging.info(f'Got {num_assigned_workers} idle workers for job {job_id}')
 
         # Register the tasks with the Zookeeper
+        logging.info(f'Registering tasks with Zookeeper for job {job_id}')
         for i, worker_hostname in enumerate(assigned_workers):
             zk_client.register_task(
                 task_type='map', job_id=job_id, state='in-progress',
@@ -135,12 +139,14 @@ class Master:
             )
 
         # Split data to `num_assigned_workers` chunks and save them to HDFS
+        logging.info(f'Splitting data for job {job_id}')
         for i, chunk in enumerate(self.split_data(map_data, num_assigned_workers)):
             hdfs_client.save_data(hdfs_path=f'jobs/job_{job_id}/map_tasks/{i}.pickle', data=chunk)
 
         event = self.map_completion_event(job_id=job_id, n_tasks=num_assigned_workers)
 
         # Send async request to all the workers for each map task
+        logging.info(f'Sending async requests to workers for job {job_id}')
         with ThreadPoolExecutor(max_workers=num_assigned_workers) as executor:
             executor.map(
                 lambda task_info: requests.post(
@@ -152,6 +158,7 @@ class Master:
             # shutdown automatically, wait for all tasks to complete
 
         # wait on that event
+        logging.info(f'Waiting for map tasks to complete for job {job_id}')
         while not event.is_set():
             event.wait(1)
 
@@ -159,9 +166,11 @@ class Master:
         zk_client = self.get_zk_client()
 
         # Polls zookeeper for workers. Blocks until one worker is assigned to this master.
+        logging.info(f'Getting idle worker for job {job_id}')
         assigned_worker_hostname = self.get_idle_workers(requested_n_workers=1)[0]
 
         # Register the shuffle task to zookeeper
+        logging.info(f'Registering shuffle task with Zookeeper for job {job_id}')
         zk_client.register_task(
             task_type='shuffle', job_id=job_id, state='in-progress', worker_hostname=assigned_worker_hostname
         )
@@ -170,6 +179,7 @@ class Master:
         event = self.shuffle_completion_event(job_id=job_id)
 
         # Send async request for the shuffle task
+        logging.info(f'Sending async request to worker for job {job_id}')
         with ThreadPoolExecutor(max_workers=1) as executor:
             executor.submit(
                 lambda: requests.post(
@@ -179,6 +189,7 @@ class Master:
             )
 
         # wait on that event
+        logging.info(f'Waiting for shuffle task to complete for job {job_id}')
         while not event.is_set():
             event.wait(1)
 
@@ -187,10 +198,12 @@ class Master:
         hdfs_client = self.get_hdfs_client()
 
         # Get the distinct keys from the shuffling by number of .pickle files on shuffle_results/ in hdfs.
+        logging.info(f'Getting distinct keys for job {job_id}')
         num_distinct_keys = len(hdfs_client.hdfs.list(f'jobs/job_{job_id}/shuffle_results'))
 
         # Polls zookeeper for workers. Blocks until at least one worker is assigned to this master.
         # Maximum amount of workers to ask for is `num_distinct_keys`
+        logging.info(f'Getting idle workers for job {job_id}')
         assigned_workers = self.get_idle_workers(
             requested_n_workers=min(
                 requested_n_workers if requested_n_workers else num_distinct_keys,
@@ -198,6 +211,7 @@ class Master:
             )
         )
         num_assigned_workers = len(assigned_workers)
+        logging.info(f'Got {num_assigned_workers} idle workers for job {job_id}')
 
         # Zookeeper gave us `num_assigned_workers` for the reduce operation hence now we have to assign
         # equally the shuffle results to the reduce workers. We can do this like this
@@ -205,6 +219,7 @@ class Master:
             chunk for chunk in self.split_data(data=list(range(num_distinct_keys)), n=num_assigned_workers)
         ]
         # Register reduce tasks to Zookeeper
+        logging.info(f'Registering reduce tasks with Zookeeper for job {job_id}')
         for worker_hostname, task_ids in zip(assigned_workers, equal_split_task_ids):
             # Notice that in the reduce stage, we defined `task_id` to be a list of the names of the shuffle
             # .pickle files that one worker will reduce. (Workers possibly reduce multiple shuffle outs)
@@ -217,6 +232,7 @@ class Master:
         event = self.reduce_completion_event(job_id=job_id, list_tasks=equal_split_task_ids)
 
         # Send async request to all the workers for each map task
+        logging.info(f'Sending async requests to workers for job {job_id}')
         with ThreadPoolExecutor(max_workers=num_assigned_workers) as executor:
             executor.map(
                 lambda task_info: requests.post(
@@ -228,6 +244,7 @@ class Master:
             # shutdown automatically, wait for all tasks to complete
 
         # wait on that event
+        logging.info(f'Waiting for reduce tasks to complete for job {job_id}')
         while not event.is_set():
             event.wait(1)
 
@@ -240,15 +257,19 @@ class Master:
 
         """
         # 1. Map Tasks (blocks of course)
+        logging.info(f'Handling map stage for {job_id}')
         self.handle_map(job_id, requested_n_workers)
 
         # 2. Shuffle Task (blocks of course)
+        logging.info(f'Handling shuffle stage for {job_id}')
         self.handle_shuffle(job_id)
 
         # 3. Reduce Tasks (blocks of course)
+        logging.info(f'Handling reduce stage for {job_id}')
         self.handle_reduce(job_id, requested_n_workers)
 
         # 4. Mark Job completed
+        logging.info(f'Marking job {job_id} as completed')
         self.get_zk_client().update_job(job_id=job_id, state='completed')
 
     def handle_dead_worker_task(self, task_filename, task_type, register_dead_task=True):

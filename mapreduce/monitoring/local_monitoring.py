@@ -130,3 +130,7 @@ class LocalMonitoring:
         print("----------------- Zoo Jobs ---------------------")
         for file in zk_client.zk.get_children('/jobs'):
             print(f'Job {file} :  {zk_client.get(f"/jobs/{file}")}')
+
+        print("\n\n------------- Dead Worker Tasks ---------------------")
+        for file in zk_client.zk.get_children('/dead_tasks'):
+            print(f'Dead Worker Task {file} :  {zk_client.get(f"/dead_tasks/{file}")}')
