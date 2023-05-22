@@ -73,6 +73,11 @@ class Task(NamedTuple):
 
 class DeadTask(NamedTuple):
     """
+    The dead task is a task that was assigned to a worker that died before completing it. The reason why we need to
+    explicitly store this information is because the master that was handling the task after the worker died might
+    also die before completing the task. In this case, we need to know which task was being handled by the master
+    that died, so that we can reassign it to another master.
+
     :param state: Task state ('in-progress', 'completed').
     :param master_hostname: Master hostname that is handling the dead worker task.
     :param task_type: 'map', 'reduce', 'shuffle'
@@ -586,7 +591,7 @@ class ZookeeperClient:
         You have to make sure that all jobs are completed before calling this method. We leave it up to the user to
         ensure that the system is in a consistent state before calling this method.
         """
-        nodes = ["jobs", "map_tasks", "shuffle_tasks", "reduce_tasks"]
+        nodes = ["jobs", "map_tasks", "shuffle_tasks", "reduce_tasks", "dead_tasks"]
 
         for node in nodes:
             for child in self.zk.get_children(f'/{node}'):

@@ -1,10 +1,18 @@
 import subprocess
 import concurrent.futures
 from ..monitoring.local_monitoring import LocalMonitoring
+from ..authentication.auth import Auth
 
 
 class LocalCluster:
-    def __init__(self, n_workers=None, n_masters=None, initialize=False, verbose=False):
+    def __init__(self, auth, n_workers=None, n_masters=None, initialize=False, verbose=False):
+
+        if not isinstance(auth, Auth):
+            raise TypeError("auth must be an instance of Auth class.")
+
+        if not auth.is_authenticated():
+            raise ValueError("You are not authenticated. Please authenticate first.")
+
         self.zk_hosts = "localhost:2181,localhost:2182,localhost:2183"
         self.hdfs_host = "localhost:9870"  # namenode
 
