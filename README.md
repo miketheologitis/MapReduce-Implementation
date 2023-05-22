@@ -124,3 +124,5 @@ python -m unittest tests.integration_tests.test_hdfs_client
 python -m unittest tests.integration_tests.test_zookeeper_client
 python -m unittest tests.integration_tests.test_local_cluster_local_monitoring
 ```
+
+![Alt Text](examples/images/docker_compose.drawio.png)
