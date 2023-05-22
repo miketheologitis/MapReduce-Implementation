@@ -1,5 +1,6 @@
 from passlib.context import CryptContext
 import sqlite3
+import os
 
 
 class AuthenticationClient:
@@ -14,7 +15,10 @@ class AuthenticationClient:
         :param db_file: the path of the SQLite database file
         """
         self.pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-        self.db_file = db_file
+
+        # Get the directory of this module.
+        module_dir = os.path.dirname(os.path.abspath(__file__))
+        self.db_file = os.path.join(module_dir, db_file)
 
         with sqlite3.connect(self.db_file) as conn:
             conn.execute('''CREATE TABLE IF NOT EXISTS users

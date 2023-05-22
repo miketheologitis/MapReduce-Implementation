@@ -1,15 +1,7 @@
-1. Check if tests work with new API
 2. Workers down, master down, master up, master down check
-
-6. beautiful progress in #TODO: `local_monitoring`
-
-7. Auth
-
-
 
 SHOWCASE:
 
-1. Master handling parallel jobs
 2. 5 Masters with 100 jobs
 
 

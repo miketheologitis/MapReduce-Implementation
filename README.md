@@ -4,9 +4,9 @@ For `LocalCluster` to work modify `/etc/hosts`, add the following:
 ```
 127.0.0.1       datanode
 ```
-We do this because the hadoop *namenode* (that we talk to add files to hdfs) returns
-the hostname of the datanode (i.e., `datanode`) but this returned hostname is inside the docker-compose
-network.
+We do this because the hadoop *namenode* (that we talk to for HDFS) returns the hostname of the
+datanode (i.e., `datanode`) but this returned hostname is inside the docker-compose network. 
+This happens internally in the `kazoo` library hence this is the most straight-forward solution.
 
 ```bash
 pip install -r requirements.txt
@@ -66,6 +66,11 @@ Output: [('e', 4), ('g', 2), ('i', 1), ('k', 1), ('m', 2), ('o', 1), ('r', 1)]
 MapReduce-Implementation/
 ├── mapreduce/
 │   ├── __init__.py
+│   ├── authentication/
+│   │   ├── __init__.py
+│   │   ├── authentication.py
+│   │   ├── auth.py
+│   │   └── auth.db
 │   ├── cluster/
 │   │   ├── __init__.py
 │   │   └── local_cluster.py
@@ -91,6 +96,7 @@ MapReduce-Implementation/
 │   │   └── test_local_cluster_local_monitoring.py
 │   ├── unit_tests/
 │   │   ├── __init__.py
+│   │   ├── test_authentication.py
 │   │   └── test_worker.py
 ├── examples/
 │   ├── __init__.py
@@ -124,5 +130,3 @@ python -m unittest tests.integration_tests.test_hdfs_client
 python -m unittest tests.integration_tests.test_zookeeper_client
 python -m unittest tests.integration_tests.test_local_cluster_local_monitoring
 ```
-
-![Alt Text](examples/images/docker_compose.drawio.png)
