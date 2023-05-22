@@ -1,7 +1,10 @@
+1. Test 10 masters no deadlock on register jobs.
 1. Check if tests work with new API
 2. Workers down, master down, master up, master down check
 
 6. beautiful progress in #TODO: `local_monitoring`
+
+7. Auth
 
 
 
