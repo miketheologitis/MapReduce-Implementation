@@ -35,7 +35,9 @@ class Auth:
         :param role: the role of the user
         """
         if self.auth_client.is_admin(self.username, self.password):
-            self.auth_client.create_user(username, password, role)
+            created_user = self.auth_client.create_user(username, password, role)
+            if created_user:
+                print(f'User {username} created successfully.')
         else:
             print("You are not admin. You cannot create users.")
 
@@ -46,6 +48,8 @@ class Auth:
         :param username: the username of the user to delete
         """
         if self.auth_client.is_admin(self.username, self.password):
-            self.auth_client.delete_user(username)
+            deleted_user = self.auth_client.delete_user(username)
+            if deleted_user:
+                print(f'User {username} deleted successfully.')
         else:
             print("You are not admin. You cannot delete users.")
