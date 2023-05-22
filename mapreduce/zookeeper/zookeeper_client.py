@@ -3,6 +3,7 @@ import pickle
 import logging
 import time
 from kazoo.client import KazooClient
+from kazoo.exceptions import LockTimeout
 
 # Get the logger for Kazoo
 kazoo_logger = logging.getLogger('kazoo.client')
@@ -33,10 +34,7 @@ kazoo_logger.setLevel(logging.ERROR)
 ├── generators/  (created by `user` `not ephemeral`)
 │   ├── job_id_sequential
 ├── locks/  (created by `user` `not ephemeral`)
-│   ├── get_workers_for_tasks_lock
-│   ├── master_job_assignment_lock
-│   ├── dead_worker_task_lock
-│   ├── dead_master_responsibilities_lock
+│   ├── ...
 """
 
 
@@ -251,7 +249,7 @@ class ZookeeperClient:
         updated_job_info = job_info._replace(**kwargs)
         self.zk.set(job_path, pickle.dumps(updated_job_info))
 
-    def get_workers_for_tasks(self, n=None):
+    def get_workers_for_tasks(self, n=None, timeout=1):
         """
         Retrieves 'idle' workers, marks them as 'in-task', and returns their hostnames.
 
@@ -267,11 +265,13 @@ class ZookeeperClient:
         :return: List of worker hostnames.
         """
         idle_workers = []
-        logging.info(f'\nAcquiring lock to get {n} idle workers\n')
+        logging.info(f'Acquiring lock to get {n} idle workers')
 
-        with self.zk.Lock("/locks/get_workers_for_tasks_lock"):
+        lock = self.zk.Lock("/locks/get_workers_for_tasks_lock")
 
-            logging.info(f'\nLock acquired to get {n} idle workers\n')
+        try:
+            lock.acquire(timeout=timeout)
+            logging.info(f'Lock acquired.')
 
             # Get the children (worker hostnames) under the workers path
             children = self.zk.get_children('/workers')
@@ -292,10 +292,15 @@ class ZookeeperClient:
                         # If the desired number of idle workers is reached, break the loop
                         break
 
-        logging.info(f'\nLock released. Get {n} idle workers. We got {idle_workers}.\n')
+            lock.release()
+            logging.info(f'Lock released.\n')
+
+        except LockTimeout:
+            logging.info(f'Could not acquire lock within {timeout} seconds.\n')
+
         return idle_workers
 
-    def get_job(self, master_hostname, job_id):
+    def get_job(self, master_hostname, job_id, timeout=1):
         """
         Retrieves an idle job and updates its state to 'in-progress' with the assigned master hostname.
 
@@ -308,15 +313,18 @@ class ZookeeperClient:
 
         :param master_hostname: Hostname of the master.
         :param job_id: The unique job id
+        :param timeout: The maximum time to wait for the lock.
         :return: True if a job was successfully assigned and updated, False otherwise.
         """
-        logging.info(f'Attempting to acquire lock for job assignment by master {master_hostname}\n')
+        logging.info(f'Attempting to acquire lock for job assignment by master {master_hostname}')
 
         got_job = False
 
-        with self.zk.Lock(path="/locks/master_job_assignment_lock", identifier=master_hostname):
+        lock = self.zk.Lock(path=f"/locks/get_job_{job_id}", identifier=master_hostname)
 
-            logging.info(f'Lock acquired for job assignment by master {master_hostname}\n')
+        try:
+            lock.acquire(timeout=timeout)
+            logging.info(f'Lock acquired for job assignment by master {master_hostname}')
 
             job = self.get(f'/jobs/{job_id}')
             if job.state == 'idle':
@@ -325,10 +333,15 @@ class ZookeeperClient:
                 logging.info(f'Job {job_id} assigned to master {master_hostname}')
                 got_job = True
 
-        logging.info(f'Lock released.\n')
+            lock.release()
+            logging.info(f'Lock released.')
+
+        except LockTimeout:
+            logging.info(f'Could not acquire lock within {timeout} seconds.')
+
         return got_job
 
-    def get_dead_worker_task(self, dead_worker_hostname):
+    def get_dead_worker_task(self, dead_worker_hostname, timeout=1):
         """
         Finds the task that of the dead worker that is 'in-progress'. Notice that only one such task exists (if any).
         This method is protected by a distributed lock to ensure that only one master can execute it at a time across
@@ -337,11 +350,18 @@ class ZookeeperClient:
         If no such task is found we return None.
 
         :param dead_worker_hostname: Hostname of the dead worker.
+        :param timeout: The maximum time to wait for the lock.
         :returns: Tuple (filename, task_type) or (None, None) if no such task is found. From the filename we can
                     extract the job_id and task_id.
         """
 
-        with self.zk.Lock("/locks/dead_worker_task_lock"):
+        logging.info(f'Attempting to acquire lock for handling dead worker task')
+
+        lock = self.zk.Lock(f"/locks/get_dead_worker_task_{dead_worker_hostname}")
+
+        try:
+            lock.acquire(timeout=timeout)
+            logging.info(f'Lock acquired.')
 
             # Look for such 'in-progress' task in `/map_tasks`
             for task_file in self.zk.get_children('/map_tasks'):
@@ -364,9 +384,15 @@ class ZookeeperClient:
                     self.zk.set(f'/reduce_tasks/{task_file}', pickle.dumps(task._replace(worker_hostname='None')))
                     return task_file, 'reduce'
 
-            return None, None
+            lock.release()
+            logging.info(f'Lock released.\n')
 
-    def get_dead_master_responsibilities(self, new_master_hostname, dead_master_hostname):
+        except LockTimeout:
+            logging.info(f'Could not acquire lock within {timeout} seconds.\n')
+
+        return None, None
+
+    def get_dead_master_responsibilities(self, new_master_hostname, dead_master_hostname, timeout=1):
         """
         Finds the jobs that were being handled by the dead master and the dead worker tasks it was handling. The idea
         behind this method is to transfer all the responsibilities of the dead master to the new master. Notice that
@@ -379,10 +405,16 @@ class ZookeeperClient:
         :returns: The old jobs of the dead master and the dead tasks it was handling ALL with the new master's hostname.
         """
 
-        with self.zk.Lock("/locks/dead_master_responsibilities_lock"):
+        logging.info(f'Attempting to acquire lock for dead master responsibilities for dead {dead_master_hostname}')
 
-            jobs = []
-            dead_tasks = []
+        jobs = []
+        dead_tasks = []
+
+        lock = self.zk.Lock(f"/locks/get_dead_master_responsibilities_{dead_master_hostname}")
+
+        try:
+            lock.acquire(timeout=timeout)
+            logging.info(f'Lock acquired.')
 
             # Look for such 'in-progress' job in `/jobs`
             for job_id in self.zk.get_children('/jobs'):
@@ -397,11 +429,20 @@ class ZookeeperClient:
                 dead_task = self.get(f'/dead_tasks/{filename}')
 
                 if dead_task.master_hostname == dead_master_hostname and dead_task.state == 'in-progress':
-                    self.zk.set(f'/dead_tasks/{filename}', pickle.dumps(dead_task._replace(master_hostname=new_master_hostname)))
+                    self.zk.set(
+                        f'/dead_tasks/{filename}',
+                        pickle.dumps(dead_task._replace(master_hostname=new_master_hostname))
+                    )
                     dead_task_dict = {'filename': filename, 'task_type': dead_task.task_type}
                     dead_tasks.append(dead_task_dict)
 
-            return jobs, dead_tasks
+            lock.release()
+            logging.info(f'Lock released.')
+
+        except LockTimeout:
+            logging.info(f'Could not acquire lock within {timeout} seconds.')
+
+        return jobs, dead_tasks
 
     def investigate_job_of_dead_master(self, job_id):
         """

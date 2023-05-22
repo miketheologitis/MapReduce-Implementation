@@ -251,9 +251,6 @@ class Master:
         while not event.is_set():
             event.wait(1)
 
-    def handle_job2(self, job_id, requested_n_workers):
-        pass
-
     def handle_job(self, job_id, requested_n_workers):
         """
         For Map, Reduce we will try to get `requested_n_workers` workers from zookeeper. If
@@ -711,10 +708,9 @@ class Master:
                     logging.info(f'Got job {job} from Zookeeper')
 
                     job_thread = threading.Thread(
-                        target=self.handle_job2, args=(job_id, job.requested_n_workers)
+                        target=self.handle_job, args=(job_id, job.requested_n_workers)
                     )
                     job_thread.start()
-
 
     def dead_workers_watcher(self):
         """
