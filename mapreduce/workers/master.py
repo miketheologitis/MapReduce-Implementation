@@ -787,7 +787,9 @@ class Master:
             for dead_master in dead_masters:
 
                 # Protected by distributed lock, only one master can handle the dead master's responsibilities
-                # The rest will have empty lists.
+                # The rest will have empty lists. Each job and dead task's hostname is the dead master's hostname
+                # and after the lock is released, the new master will be responsible for them, i.e., the hostname
+                # will be changed to the new master's hostname
                 jobs, dead_tasks = zk_client.get_dead_master_responsibilities(
                     new_master_hostname=HOSTNAME, dead_master_hostname=dead_master
                 )
