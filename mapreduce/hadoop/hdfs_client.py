@@ -90,6 +90,7 @@ class HdfsClient:
 
         :param hdfs_path: The HDFS path to save the function.
         :param func: The function to be saved.
+        :param overwrite: Whether to overwrite the file if it already exists.
         """
         serialized_func = dill.dumps(func)
         self.hdfs.write(hdfs_path, data=serialized_func)

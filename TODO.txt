@@ -1,11 +1,5 @@
-1. hdfs_clear , zk_clear on the fly on jupyter notebook
-
-2. unittest for zookeeper_client for new funcs.
-
-1. local_cluster.shutdown_cluster(delete_hdfs_jobs=True) rename ugly name `delete_hdfs_jobs`
-to `clean_hdfs`
-
-5. master down?
+1. Check if tests work with new API
+2. Workers down, master down, master up, master down check
 
 6. beautiful progress in #TODO: `local_monitoring`
 
