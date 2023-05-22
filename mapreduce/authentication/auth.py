@@ -1,4 +1,4 @@
-from authentication_client import AuthenticationClient
+from .authentication_client import AuthenticationClient
 
 
 class Auth:

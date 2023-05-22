@@ -1,6 +1,6 @@
 import unittest
-import sys
 import os
+import sys
 from mapreduce.authentication.auth import Auth
 from mapreduce.authentication.authentication_client import AuthenticationClient
 
