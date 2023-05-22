@@ -10,9 +10,6 @@ import logging
 from ..zookeeper.zookeeper_client import ZookeeperClient
 from ..hadoop.hdfs_client import HdfsClient
 
-
-# TODO: Put timeouts on all ThreadPool reqs
-
 """
 Master death assumptions:
 
@@ -150,13 +147,16 @@ class Master:
 
         event = self.map_completion_event(job_id=job_id, n_tasks=num_assigned_workers)
 
-        # Send async request to all the workers for each map task
+        # Send async request to all the workers for each map task. Set timeout to 1 sec which will not raise an
+        # exception because we are not collecting the responses. An exception will be raised when we try to iterate
+        # over the results which we are not doing here.
         logging.info(f'Sending async requests to workers for job {job_id}')
         with ThreadPoolExecutor(max_workers=num_assigned_workers) as executor:
             executor.map(
                 lambda task_info: requests.post(
                     f'http://{task_info[1]}:5000/map-task',
-                    json={'job_id': job_id, 'task_id': task_info[0]}
+                    json={'job_id': job_id, 'task_id': task_info[0]},
+                    timeout=1  # Set timeout to 1 sec
                 ),
                 enumerate(assigned_workers)
             )
@@ -183,13 +183,16 @@ class Master:
         # Set up an event using `DataWatcher` for the completion of the shuffle task
         event = self.shuffle_completion_event(job_id=job_id)
 
-        # Send async request for the shuffle task
+        # Send async request for the shuffle task. Set timeout to 1 sec which will not raise an exception because
+        # we are not collecting the responses. An exception will be raised when we try to iterate over the results
+        # which we are not doing here.
         logging.info(f'Sending async request to worker for job {job_id}')
         with ThreadPoolExecutor(max_workers=1) as executor:
             executor.submit(
                 lambda: requests.post(
                     f'http://{assigned_worker_hostname}:5000/shuffle-task',
-                    json={'job_id': job_id}
+                    json={'job_id': job_id},
+                    timeout=1  # Set timeout to 1 sec
                 )
             )
 
@@ -236,13 +239,16 @@ class Master:
         # Set up an event using `DataWatcher` for the completion of all the reduce tasks
         event = self.reduce_completion_event(job_id=job_id, list_tasks=equal_split_task_ids)
 
-        # Send async request to all the workers for each map task
+        # Send async request to all the workers for each map task. Set timeout to 1 sec which will not raise an
+        # exception because we are not collecting the responses. An exception will be raised when we try to iterate over
+        # the results which we are not doing here.
         logging.info(f'Sending async requests to workers for job {job_id}')
         with ThreadPoolExecutor(max_workers=num_assigned_workers) as executor:
             executor.map(
                 lambda task_info: requests.post(
                     f'http://{task_info[0]}:5000/reduce-task',
-                    json={'job_id': job_id, 'task_ids': task_info[1]}
+                    json={'job_id': job_id, 'task_ids': task_info[1]},
+                    timeout=1  # Set timeout to 1 sec
                 ),
                 zip(assigned_workers, equal_split_task_ids)
             )
@@ -313,12 +319,15 @@ class Master:
             # Update the task in Zookeeper (to the new worker)
             zk_client.update_task('map', job_id, task_id, worker_hostname=assigned_worker_hostname)
 
-            # send async request to the worker
+            # send async request to the worker. Set timeout to 1 sec which will not raise an exception because
+            # we are not collecting the responses. An exception will be raised when we try to iterate over the results
+            # which we are not doing here.
             with ThreadPoolExecutor(max_workers=1) as executor:
                 executor.submit(
                     lambda: requests.post(
                         f'http://{assigned_worker_hostname}:5000/map-task',
-                        json={'job_id': job_id, 'task_id': task_id}
+                        json={'job_id': job_id, 'task_id': task_id},
+                        timeout=1  # Set timeout to 1 sec
                     )
                 )
 
@@ -331,12 +340,15 @@ class Master:
             # Update the task in Zookeeper (to the new worker)
             zk_client.update_task('reduce', job_id, task_ids, worker_hostname=assigned_worker_hostname)
 
-            # send async request to the worker
+            # send async request to the worker Set timeout to 1 sec which will not raise an exception because
+            # we are not collecting the responses. An exception will be raised when we try to iterate over the results
+            # which we are not doing here.
             with ThreadPoolExecutor(max_workers=1) as executor:
                 executor.submit(
                     lambda: requests.post(
                         f'http://{assigned_worker_hostname}:5000/reduce-task',
-                        json={'job_id': job_id, 'task_ids': task_ids}
+                        json={'job_id': job_id, 'task_ids': task_ids},
+                        timeout=1  # Set timeout to 1 sec
                     )
                 )
 
@@ -349,12 +361,15 @@ class Master:
             # Update the task in Zookeeper (to the new worker)
             zk_client.update_task('shuffle', job_id, worker_hostname=assigned_worker_hostname)
 
-            # send async request to the worker
+            # send async request to the worker. Set timeout to 1 sec which will not raise an exception because
+            # we are not collecting the responses. An exception will be raised when we try to iterate over the results
+            # which we are not doing here.
             with ThreadPoolExecutor(max_workers=1) as executor:
                 executor.submit(
                     lambda: requests.post(
                         f'http://{assigned_worker_hostname}:5000/shuffle-task',
-                        json={'job_id': job_id}
+                        json={'job_id': job_id},
+                        timeout=1  # Set timeout to 1 sec
                     )
                 )
 
@@ -409,12 +424,15 @@ class Master:
                 event = self.map_completion_event(job_id=job_id, n_tasks=num_assigned_workers)
 
                 # Then based on Assumption 1. no map task has been received by a worker yet.
-                # (see comments at the top of the file)
+                # (see comments at the top of the file). Set timeout to 1 sec which will not raise an exception because
+                # we are not collecting the responses. An exception will be raised when we try to iterate over the
+                # results which we are not doing here.
                 with ThreadPoolExecutor(max_workers=num_assigned_workers) as executor:
                     executor.map(
                         lambda task_info: requests.post(
                             f'http://{task_info[1]}:5000/map-task',
-                            json={'job_id': job_id, 'task_id': task_info[0]}
+                            json={'job_id': job_id, 'task_id': task_info[0]},
+                            timeout=1  # Set timeout to 1 sec
                         ),
                         zip(
                             [task_id for task_id in info_dict['task_ids']],
@@ -476,12 +494,15 @@ class Master:
                 # Set up an event using `DataWatcher` for the completion of the shuffle task
                 event = self.shuffle_completion_event(job_id=job_id)
 
-                # Send async request for the shuffle task
+                # Send async request for the shuffle task Set timeout to 1 sec which will not raise an exception because
+                # we are not collecting the responses. An exception will be raised when we try to iterate over the
+                # results which we are not doing here.
                 with ThreadPoolExecutor(max_workers=1) as executor:
                     executor.submit(
                         lambda: requests.post(
                             f'http://{shuffle_task.worker_hostname}:5000/shuffle-task',
-                            json={'job_id': job_id}
+                            json={'job_id': job_id},
+                            timeout=1  # Set timeout to 1 sec
                         )
                     )
 
@@ -532,12 +553,15 @@ class Master:
                 event = self.reduce_completion_event(job_id=job_id, list_tasks=info_dict['task_ids'])
 
                 # Then based on Assumption 1. no map task has been received by a worker yet.
-                # (see comments at the top of the file)
+                # (see comments at the top of the file). Set timeout to 1 sec which will not raise an exception because
+                # we are not collecting the responses. An exception will be raised when we try to iterate over the
+                # results which we are not doing here.
                 with ThreadPoolExecutor(max_workers=num_assigned_workers) as executor:
                     executor.map(
                         lambda task_info: requests.post(
                             f'http://{task_info[0]}:5000/reduce-task',
-                            json={'job_id': job_id, 'task_ids': task_info[1]}
+                            json={'job_id': job_id, 'task_ids': task_info[1]},
+                            timeout=1  # Set timeout to 1 sec
                         ),
                         zip(
                             [task.worker_hostname for task in info_dict['reduce_tasks']],
