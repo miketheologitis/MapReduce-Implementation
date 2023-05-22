@@ -104,6 +104,8 @@ class Master:
         zk_client = self.get_zk_client()
         idle_assigned_workers = []
 
+        logging.info(f'Getting idle workers for task. I will ask for {requested_n_workers} workers.')
+
         # Continuously ask Zookeeper for idle workers until we have enough.
         while not idle_assigned_workers:
             # Get the list of idle workers from Zookeeper with distributed Lock
@@ -834,8 +836,8 @@ class Master:
         zk_client = self.get_zk_client()
         zk_client.register_master(HOSTNAME)
         self.new_job_watcher()
-        #self.dead_workers_watcher()
-        #self.dead_masters_watcher()
+        self.dead_workers_watcher()
+        self.dead_masters_watcher()
         app.run(host='0.0.0.0', port=5000)
 
 
