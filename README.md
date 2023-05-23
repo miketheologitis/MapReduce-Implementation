@@ -1,11 +1,15 @@
+## MapReduce Implementation
+
+This is a (from-scratch) implementation of the MapReduce framework as proposed in [MapReduce: Simplified Data Processing on Large Clusters](https://static.googleusercontent.com/media/research.google.com/el//archive/mapreduce-osdi04.pdf).
+
 ## Pre-requisites
 
 For `LocalCluster` to work modify `/etc/hosts`, add the following:
 ```
 127.0.0.1       datanode
 ```
-We do this because the hadoop *namenode* (that we talk to for HDFS) returns the hostname of the
-datanode (i.e., `datanode`) but this returned hostname is inside the docker-compose network. 
+We do this because the hadoop *namenode* (that we talk to for *HDFS*) returns the hostname of the
+datanode (i.e., `datanode`) but this returned hostname is inside the `docker-compose` network. 
 This happens internally in the `kazoo` library hence this is the most straight-forward solution.
 
 ```bash
@@ -100,33 +104,24 @@ MapReduce-Implementation/
 │   │   └── test_worker.py
 ├── examples/
 │   ├── __init__.py
-│   ├── testing.ipynb
-├── README.md
+│   ├── 1. Introduction.ipynb
+│   ├── 2. Fault-Tolerance.ipynb
+├── hadoop.env
 ├── requirements.txt
 ├── Dockerfile.worker
 ├── Dockerfile.master
-├── TODO.txt
 ├── docker-compose.yaml
-└── hadoop.env
+└── README.md
 ```
 
-### Distributed System Architecture
+## Distributed System Architecture
 
-We set up a docker-compose network with *workers*, *masters*, *zookeeper* and *hdfs*. The requirement of the system is that
-we can externally talk with hdfs and zookeeper. The rest of the components are internal to the docker-compose network.
+See `examples/1.Introduction.ipynb` for a detailed explanation of the architecture.
 
-### Fault Tolerance
+## Fault Tolerance
 
 If <ins>at all times at least one</ins> *master* service is alive, we guarantee fault tolerance for the following scenarios:
 1. *Worker* failures at any time.
 2. *Master* failures at any time.
 
-### Tests
-
-```bash
-python -m unittest tests.unit_tests.test_worker
-python -m unittest tests.unit_tests.test_authentication
-python -m unittest tests.integration_tests.test_hdfs_client
-python -m unittest tests.integration_tests.test_zookeeper_client
-python -m unittest tests.integration_tests.test_local_cluster_local_monitoring
-```
+See `examples/2.Fault-Tolerance.ipynb` for an explanation of the fault tolerance mechanisms.
