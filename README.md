@@ -117,9 +117,9 @@ we can externally talk with hdfs and zookeeper. The rest of the components are i
 
 ### Fault Tolerance
 
-We guarantee fault tolerance for the following scenarios, if at least one *master* service is alive:
-- *Worker* failures at any time.
-- *Master* failures at any time.
+If <ins>at all times at least one</ins> *master* service is alive, we guarantee fault tolerance for the following scenarios:
+1. *Worker* failures at any time.
+2. *Master* failures at any time.
 
 ### Tests
 
