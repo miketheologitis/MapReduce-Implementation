@@ -766,6 +766,8 @@ class Master:
             # Update the registered workers
             self.registered_workers = children_set
 
+            logging.info(f'Dead workers: {dead_workers}')
+
             # if there are dead workers, reassign their tasks
             for dead_worker in dead_workers:
                 task_filename, task_type = zk_client.get_dead_worker_task(dead_worker)

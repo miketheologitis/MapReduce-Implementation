@@ -3,20 +3,25 @@ import unittest
 import threading
 
 from mapreduce.cluster.local_cluster import LocalCluster
+from mapreduce.authentication.auth import Auth
 
 
 class LocalClusterTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.clu = LocalCluster(n_workers=0, n_masters=0, initialize=True, verbose=False)
+        cls.auth = Auth('admin', 'admin')
+        cls.clu = LocalCluster(auth=cls.auth, n_workers=0, n_masters=0, initialize=True, verbose=False)
 
     def test_wait_for_job_completion(self):
         self.clu.get_zk_client().register_job(job_id=1)
 
         # Create a new thread that will call wait_for_job_completion
         def wait_for_job():
-            self.clu.local_monitoring.wait_for_job_completion(job_id=1)
+            event = self.clu.local_monitoring.job_completion_event(job_id=1)
+
+            while not event.is_set():
+                time.sleep(1)
 
         wait_thread = threading.Thread(target=wait_for_job)
 
@@ -47,7 +52,6 @@ class LocalClusterTests(unittest.TestCase):
         # if wait_thread is still alive at this point, it means that
         # wait_for_job_completion did not return even though the job was marked as completed
         self.assertTrue(wait_thread.is_alive())
-
 
         # Start the thread
         complete_thread.start()

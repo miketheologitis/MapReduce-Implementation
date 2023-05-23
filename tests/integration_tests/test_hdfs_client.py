@@ -5,6 +5,11 @@ from operator import itemgetter
 from itertools import groupby
 
 
+import logging
+
+logging.disable(logging.CRITICAL)
+
+
 class TestHdfs(unittest.TestCase):
 
     @classmethod
