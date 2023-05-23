@@ -24,7 +24,7 @@ Go to the `examples` folder and familiarize yourself with the API by running the
 
 ### Map Function
 
-`map([x1, x2, ...]) -> [(k1, v2), (k2, v2), ...]` 
+`map([x1, x2, ...]) -> [(k1, v2), (k2, v2), ...]` (elements are arbitrary)
 
 Example:
 ```python
@@ -53,7 +53,7 @@ Output: [('e', [1, 1, 1, 1]), ('g', [1, 1]), ('i', [1]), ('k', [1]),
 
 
 ### Reduce Function
-`reduce([v1, v2, ...]) -> y`
+`reduce([v1, v2, ...]) -> y` (elements are arbitrary)
 
 ```python
 def reduce_func(values):
