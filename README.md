@@ -19,10 +19,10 @@ Then, install the requirements.
 pip install -r requirements.txt
 ```
 
-Go to the root of the project and install the project as a package.
+Go inside the root of the project `~/MapReduce-Implementation` and install the project as a package.
 
 ```bash
-~/MapReduce-Implementation$ pip install -e .
+pip install -e .
 ```
 
 For `LocalCluster` to work modify `/etc/hosts`, add the following:
