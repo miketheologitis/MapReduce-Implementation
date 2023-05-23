@@ -366,13 +366,15 @@ class ZookeeperClient:
 
         try:
             lock.acquire(timeout=timeout)
-            logging.info(f'Lock acquired.')
+            logging.info(f'Lock acquired for dead worker {dead_worker_hostname} task.')
 
             # Look for such 'in-progress' task in `/map_tasks`
             for task_file in self.zk.get_children('/map_tasks'):
                 task = self.get(f'/map_tasks/{task_file}')
                 if task.worker_hostname == dead_worker_hostname and task.state == 'in-progress':
                     self.zk.set(f'/map_tasks/{task_file}', pickle.dumps(task._replace(worker_hostname='None')))
+                    logging.info(f'Lock released for dead worker {dead_worker_hostname} task.')
+                    lock.release()
                     return task_file, 'map'
 
             # Look for such 'in-progress' task in `/shuffle_tasks`
@@ -380,6 +382,8 @@ class ZookeeperClient:
                 task = self.get(f'/shuffle_tasks/{task_file}')
                 if task.worker_hostname == dead_worker_hostname and task.state == 'in-progress':
                     self.zk.set(f'/shuffle_tasks/{task_file}', pickle.dumps(task._replace(worker_hostname='None')))
+                    logging.info(f'Lock released for dead worker {dead_worker_hostname} task.')
+                    lock.release()
                     return task_file, 'shuffle'
 
             # Look for such 'in-progress' task in `/reduce_tasks`
@@ -387,10 +391,12 @@ class ZookeeperClient:
                 task = self.get(f'/reduce_tasks/{task_file}')
                 if task.worker_hostname == dead_worker_hostname and task.state == 'in-progress':
                     self.zk.set(f'/reduce_tasks/{task_file}', pickle.dumps(task._replace(worker_hostname='None')))
+                    logging.info(f'Lock released for dead worker {dead_worker_hostname} task.')
+                    lock.release()
                     return task_file, 'reduce'
 
             lock.release()
-            logging.info(f'Lock released.\n')
+            logging.info(f'Lock released for dead worker {dead_worker_hostname} task.')
 
         except LockTimeout:
             logging.info(f'Could not acquire lock within {timeout} seconds.\n')
