@@ -20,6 +20,20 @@ pip install -r requirements.txt
 
 Go to the `examples` folder and familiarize yourself with the API by running the notebooks.
 
+## Distributed System Architecture
+
+![Architecture](examples/images/docker_compose.png)
+
+See `examples/1.Introduction.ipynb` for a detailed explanation of the architecture.
+
+## Fault Tolerance
+
+If <ins>at all times at least one</ins> *master* service is alive, we guarantee fault tolerance for the following scenarios:
+1. *Worker* failures at any time.
+2. *Master* failures at any time.
+
+See `examples/2.Fault-Tolerance.ipynb` for an explanation of the fault tolerance mechanisms.
+
 ## MapReduce
 
 ### Map Function
@@ -113,15 +127,3 @@ MapReduce-Implementation/
 ├── docker-compose.yaml
 └── README.md
 ```
-
-## Distributed System Architecture
-
-See `examples/1.Introduction.ipynb` for a detailed explanation of the architecture.
-
-## Fault Tolerance
-
-If <ins>at all times at least one</ins> *master* service is alive, we guarantee fault tolerance for the following scenarios:
-1. *Worker* failures at any time.
-2. *Master* failures at any time.
-
-See `examples/2.Fault-Tolerance.ipynb` for an explanation of the fault tolerance mechanisms.
