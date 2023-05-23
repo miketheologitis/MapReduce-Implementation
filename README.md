@@ -134,7 +134,6 @@ MapReduce-Implementation/
 │   │   ├── test_authentication.py
 │   │   └── test_worker.py
 ├── examples/
-│   ├── __init__.py
 │   ├── 1. Introduction.ipynb
 │   ├── 2. Fault-Tolerance.ipynb
 │   └── Miscellaneous.ipynb
