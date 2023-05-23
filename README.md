@@ -4,6 +4,27 @@ This is a (from-scratch) implementation of the MapReduce framework as proposed i
 
 ## Pre-requisites
 
+Install `docker` and `docker-compose` (if you haven't already).
+
+Create a `conda` environment
+
+```bash
+conda create -n mapreduce python=3.11.3
+conda activate mapreduce
+```
+
+Then, install the requirements.
+
+```bash
+pip install -r requirements.txt
+```
+
+Go to the root of the project and install the project as a package.
+
+```bash
+~/MapReduce-Implementation$ pip install -e .
+```
+
 For `LocalCluster` to work modify `/etc/hosts`, add the following:
 ```
 127.0.0.1       datanode
@@ -11,10 +32,6 @@ For `LocalCluster` to work modify `/etc/hosts`, add the following:
 We do this because the hadoop *namenode* (that we talk to for *HDFS*) returns the hostname of the
 datanode (i.e., `datanode`) but this returned hostname is inside the `docker-compose` network. 
 This happens internally in the `kazoo` library hence this is the most straight-forward solution.
-
-```bash
-pip install -r requirements.txt
-```
 
 ## Usage
 
@@ -120,6 +137,7 @@ MapReduce-Implementation/
 │   ├── __init__.py
 │   ├── 1. Introduction.ipynb
 │   ├── 2. Fault-Tolerance.ipynb
+│   └── Miscellaneous.ipynb
 ├── hadoop.env
 ├── requirements.txt
 ├── Dockerfile.worker
