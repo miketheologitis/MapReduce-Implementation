@@ -5,6 +5,9 @@ from mapreduce.zookeeper.zookeeper_client import ZookeeperClient
 from mapreduce.hadoop.hdfs_client import HdfsClient
 from hdfs import InsecureClient
 from mapreduce.workers.worker import app, worker
+import logging
+
+logging.disable(logging.CRITICAL)
 
 
 class TestWorker(unittest.TestCase):

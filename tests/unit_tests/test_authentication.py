@@ -11,11 +11,11 @@ class TestAuthentication(unittest.TestCase):
         self.original_stdout = sys.stdout
         sys.stdout = open(os.devnull, 'w')
 
-        self.db_file = 'test_auth.db'
-        self.auth_client = AuthenticationClient(db_file=self.db_file)
-        self.auth = Auth('test_user', 'test_pass', 'user', db_file=self.db_file)
+        self.auth_client = AuthenticationClient()
+        self.auth = Auth('admin', 'admin')
 
     def test_create_user(self):
+        self.auth.delete_user('test_user')
         result = self.auth_client.create_user('test_user', 'test_pass', 'user')
         self.assertTrue(result)
 
@@ -64,9 +64,7 @@ class TestAuthentication(unittest.TestCase):
         self.assertIsNone(result)
 
     def tearDown(self):
-        # clean up the database file after the tests
-        os.remove(self.db_file)
-
+        pass
         # Restore stdout to its original state after each test
         sys.stdout.close()
         sys.stdout = self.original_stdout

@@ -3,6 +3,11 @@ import subprocess
 from mapreduce.zookeeper.zookeeper_client import ZookeeperClient
 
 
+import logging
+
+logging.disable(logging.CRITICAL)
+
+
 class TestZookeeper(unittest.TestCase):
 
     @classmethod
@@ -24,7 +29,7 @@ class TestZookeeper(unittest.TestCase):
         children = self.zk_client.zk.get_children('/')
 
         expected_children = [
-            'workers', 'masters', 'map_tasks', 'locks',
+            'workers', 'masters', 'map_tasks', 'locks', 'dead_tasks',
             'shuffle_tasks', 'reduce_tasks', 'generators', 'zookeeper', 'jobs'
         ]
 
@@ -46,9 +51,10 @@ class TestZookeeper(unittest.TestCase):
         assigned_jobs = []
 
         # Assign jobs to masters and verify job state and assigned master
-        for _ in range(10):
-            assigned_job_id, _ = self.zk_client.get_job('master1')
-            assigned_jobs.append(assigned_job_id)
+        for i in range(10):
+            got_job = self.zk_client.get_job('master1', i)
+            self.assertTrue(got_job)
+            assigned_jobs.append(i)
 
         # Verify the state and assigned master of each job
         for job_id in job_ids:
