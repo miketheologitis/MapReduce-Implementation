@@ -4,7 +4,9 @@ This is a (from-scratch) implementation of the MapReduce framework as proposed i
 
 ## Pre-requisites
 
-Install `docker` and `docker-compose` (if you haven't already).
+Install `docker` and `docker-compose` (if you haven't already). We strongly suggest installing
+`docker-compose` with `pip` due to an issue with the `apt` installation (bug in
+the `--no-recreate` flag - see [here](https://github.com/docker/compose/issues/8940)).
 
 Create a `conda` environment
 
@@ -17,6 +19,12 @@ Then, install the requirements.
 
 ```bash
 pip install -r requirements.txt
+```
+
+Install `docker-compose` with `pip`.
+
+```bash
+pip install docker-compose
 ```
 
 Go inside the root of the project `~/MapReduce-Implementation` and install the project as a package.
