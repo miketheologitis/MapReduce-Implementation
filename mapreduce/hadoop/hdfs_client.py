@@ -42,8 +42,8 @@ class HdfsClient:
     def check_start_with_retries(self, max_retries=15, retry_delay=10):
         for i in range(max_retries):
             try:
+                self.initialize_jobs_dir()  # This does not impact already existing directories
                 self.hdfs.list('')
-                self.initialize_jobs_dir()
             except Exception as e:
                 if i < max_retries - 1:
                     time.sleep(retry_delay)

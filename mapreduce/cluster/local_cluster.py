@@ -117,8 +117,8 @@ class LocalCluster:
         )
 
         hdfs_client = self.get_hdfs_client()
-        zk_client = self.get_zk_client()
 
+        zk_client = self.get_zk_client()
         zk_client.setup_paths()
 
         # Because we do not persist jobs in ZooKeeper, we need to know the number of persisted jobs in HDFS
