@@ -57,7 +57,7 @@ If <ins>at all times at least one</ins> *master* service is alive, we guarantee 
 1. *Worker* failures at any time.
 2. *Master* failures at any time.
 
-See `examples/2.Fault-Tolerance.ipynb` for an explanation of the fault tolerance mechanisms.
+See `examples/2.Fault-Tolerance.ipynb` which showcases our claims.
 
 ## MapReduce
 
@@ -83,6 +83,8 @@ Output: [('m', 1), ('i', 1), ('k', 1), ('e', 1), ('g', 1), ('e', 1), ('o', 1),
 
 ### Shuffle
 Intermediate results of the *map* function are shuffled (sorted and grouped by **key**). This operation is straightforward.
+
+Example:
 ```python
 Input: [('m', 1), ('i', 1), ('k', 1), ('e', 1), ('g', 1), ('e', 1),
         ('o', 1), ('r', 1), ('g', 1), ('e', 1), ('m', 1)]
@@ -94,6 +96,7 @@ Output: [('e', [1, 1, 1, 1]), ('g', [1, 1]), ('i', [1]), ('k', [1]),
 ### Reduce Function
 `reduce([v1, v2, ...]) -> y` (elements are arbitrary)
 
+Example:
 ```python
 def reduce_func(values):
     return sum(values)
